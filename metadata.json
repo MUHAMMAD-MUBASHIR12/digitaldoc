@@ -1,0 +1,7 @@
+{
+  "name": "Digital Doc - University Document Automation",
+  "description": "A production-grade university document automation platform featuring student portals, admin review workflows, secure document generation with QR verification, and a complete FastAPI backend architecture reference.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
