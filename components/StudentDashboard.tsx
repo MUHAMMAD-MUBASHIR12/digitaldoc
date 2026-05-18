@@ -16,7 +16,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const [isPdfDownloading, setIsPdfDownloading] = useState(false);
   const [hasScrolledStep1, setHasScrolledStep1] = useState(false);
   const [hasScrolledStep2, setHasScrolledStep2] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentRequest | null>(null);
@@ -28,6 +27,12 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [paymentUploadError, setPaymentUploadError] = useState<string | null>(null);
 
+  const [studentProfile, setStudentProfile] = useState<{
+    roll_number: string | null;
+    cgpa: number | null;
+    degree_title: string | null;
+  } | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const paymentFileRef = useRef<HTMLInputElement>(null);
 
@@ -36,9 +41,15 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
   }, []);
 
   useEffect(() => {
+    supabaseApi.getStudentPublicInfo(user.id).then(info => {
+      if (info) setStudentProfile(info);
+    });
+  }, [user.id]);
+
+  useEffect(() => {
     if (showModal) {
-      if (modalStep === 'selection') setHasScrolledStep1(false);
-      else if (modalStep === 'confirmation') setHasScrolledStep2(false);
+      setHasScrolledStep1(true);
+      setHasScrolledStep2(true);
       if (scrollRef.current) scrollRef.current.scrollTop = 0;
     }
   }, [showModal, modalStep]);
@@ -137,6 +148,12 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     }
   };
 
+  const handleDownloadPdf = () => {
+    if (!previewDoc || !previewDoc.verificationPayload) return;
+    const url = `https://livcbioyoaupoyuemvmm.supabase.co/storage/v1/object/public/generated-pdfs/${previewDoc.psid}.pdf`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 md:space-y-12 animate-fadeIn pb-16 px-4 md:px-0">
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 md:border-b md:border-slate-200 md:pb-10">
@@ -144,7 +161,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
           <div className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest rounded shadow-lg shadow-blue-200">
             Student Desktop
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">Assalam-o-Alaikum, {user.name}</h1>
+          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">Welcome, {user.name}</h1>
           <p className="text-slate-500 text-base font-medium max-w-xl">Manage your verified academic archive. All documents undergo registrar counter-validation before issuance.</p>
         </div>
         <button
@@ -163,7 +180,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
           </div>
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enrollment ID</p>
-            <p className="text-sm font-mono font-black text-slate-800 tracking-tighter">{user.registrationNumber || '—'}</p>
+            <p className="text-sm font-mono font-black text-slate-800 tracking-tighter">{studentProfile?.roll_number ?? '—'}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
@@ -175,19 +192,25 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
             <p className="text-2xl font-black text-slate-900 leading-none mt-1">{requests.filter(r => r.status !== RequestStatus.GENERATED && r.status !== RequestStatus.REJECTED).length}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm sm:col-span-2 flex items-center justify-between transition-transform hover:-translate-y-1">
-           <div className="flex items-center space-x-5">
-             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100">
-               <i className="fas fa-shield-check text-xl"></i>
-             </div>
-             <div>
-               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Authenticated Docs</p>
-               <p className="text-2xl font-black text-slate-900 leading-none mt-1">{requests.filter(r => r.status === RequestStatus.GENERATED).length}</p>
-             </div>
-           </div>
-           <div className="text-right hidden sm:block">
-             <span className="text-[10px] bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-black uppercase tracking-widest border border-blue-100">Secure Network</span>
-           </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+          <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100">
+            <i className="fas fa-shield-check text-xl"></i>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Authenticated Docs</p>
+            <p className="text-2xl font-black text-slate-900 leading-none mt-1">{requests.filter(r => r.status === RequestStatus.GENERATED).length}</p>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+          <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 border border-emerald-100">
+            <i className="fas fa-star-half-stroke text-xl"></i>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CGPA</p>
+            <p className="text-2xl font-black text-slate-900 leading-none mt-1">
+              {studentProfile?.cgpa != null ? studentProfile.cgpa.toFixed(2) : '—'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -198,14 +221,14 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left min-w-[700px]">
             <thead>
-              <tr className="text-[10px] uppercase text-slate-400 font-bold border-b border-slate-50 tracking-[0.15em]">
+              <tr className="text-[10px] uppercase text-slate-500 font-black border-b border-slate-100 tracking-[0.15em] bg-slate-50/60">
                 <th className="px-8 md:px-12 py-5">Transaction PSID</th>
                 <th className="px-8 md:px-12 py-5">Document Details</th>
                 <th className="px-8 md:px-12 py-5">Ledger Status</th>
                 <th className="px-8 md:px-12 py-5 text-right">Gateway Access</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50 text-sm">
+            <tbody className="text-sm">
               {isLoading ? (
                 <tr>
                   <td colSpan={4} className="px-8 md:px-12 py-24 text-center">
@@ -217,18 +240,27 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                   <td colSpan={4} className="px-8 md:px-12 py-24 text-center text-slate-300 italic font-bold">No ledger entries found for this identification.</td>
                 </tr>
               ) : requests.map(req => (
-                <tr key={req.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 md:px-12 py-7">
-                    <div className="font-mono font-black text-slate-900 text-base tracking-tighter">{req.psid}</div>
+                <tr key={req.id} className="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+                  <td className="px-8 md:px-12 py-6">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-slate-800 text-base tracking-tighter">{req.psid}</span>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(req.psid)}
+                        className="text-slate-300 hover:text-blue-500 transition-colors"
+                        title="Copy PSID"
+                      >
+                        <i className="fas fa-copy text-[11px]"></i>
+                      </button>
+                    </div>
                     <div className="text-[9px] text-slate-400 font-bold uppercase mt-1.5">{req.createdAt ? new Date(req.createdAt).toLocaleDateString() : '—'}</div>
                   </td>
-                  <td className="px-8 md:px-12 py-7">
+                  <td className="px-8 md:px-12 py-6">
                     <div className="font-black text-slate-900 uppercase tracking-tight text-sm">{req.docType}</div>
                     <div className="text-[10px] text-slate-500 font-bold mt-0.5">Semesters: {req.semesters.join(', ')}</div>
                     <div className="text-[10px] font-black text-slate-300 mt-2 uppercase tracking-widest">PKR {req.amount.toLocaleString()}</div>
                   </td>
-                  <td className="px-8 md:px-12 py-7">
-                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${statusBadgeClass(req.status)}`}>
+                  <td className="px-8 md:px-12 py-6">
+                    <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide border ${statusBadgeClass(req.status)}`}>
                       {req.status}
                     </span>
                     {req.status === RequestStatus.REJECTED && req.adminNote && (
@@ -238,22 +270,22 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                       </div>
                     )}
                   </td>
-                  <td className="px-8 md:px-12 py-7 text-right">
+                  <td className="px-8 md:px-12 py-6 text-right">
                     {req.status === RequestStatus.PENDING_PAYMENT && (
                       <button
                         onClick={() => openPaymentModal(req)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg shadow-blue-200 active:scale-95 flex items-center ml-auto"
+                        className="border-2 border-blue-500 hover:bg-blue-50 text-blue-600 px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center ml-auto gap-2"
                       >
-                        <i className="fas fa-file-invoice mr-2 opacity-60"></i>
+                        <i className="fas fa-upload text-xs"></i>
                         Proof Upload
                       </button>
                     )}
                     {req.status === RequestStatus.GENERATED && (
                       <button
-                        className="bg-white hover:bg-slate-50 text-slate-900 px-6 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-slate-200 flex items-center justify-center space-x-2 ml-auto active:scale-95 shadow-sm"
+                        className="border-2 border-emerald-500 hover:bg-emerald-50 text-emerald-600 px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center ml-auto gap-2"
                         onClick={() => setPreviewDoc(req)}
                       >
-                        <i className="fas fa-print text-blue-600"></i>
+                        <i className="fas fa-eye text-xs"></i>
                         <span>Inspect Asset</span>
                       </button>
                     )}
@@ -569,7 +601,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                   <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mt-1.5">Cryptographically Signed Archive</p>
                 </div>
               </div>
-              <button onClick={() => { setPreviewDoc(null); setIsPdfDownloading(false); }} className="text-slate-400 hover:text-red-500 w-12 h-12 rounded-2xl flex items-center justify-center bg-white border border-slate-100 shadow-sm transition-all active:scale-90">
+              <button onClick={() => setPreviewDoc(null)} className="text-slate-400 hover:text-red-500 w-12 h-12 rounded-2xl flex items-center justify-center bg-white border border-slate-100 shadow-sm transition-all active:scale-90">
                 <i className="fas fa-times text-xl"></i>
               </button>
             </div>
@@ -600,7 +632,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                         </div>
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Registration ID</p>
-                          <p className="font-black text-slate-900 font-mono text-xl tracking-tighter">{user.registrationNumber || '—'}</p>
+                          <p className="font-black text-slate-900 font-mono text-xl tracking-tighter">{studentProfile?.roll_number ?? '—'}</p>
                         </div>
                       </div>
                       <div className="space-y-8 text-right">
@@ -622,15 +654,30 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                 </div>
                 <div className="mt-auto flex justify-between items-end border-t-2 border-slate-100 pt-12">
                    <div className="flex items-center space-x-8">
-                      <div className="bg-white p-5 border-2 border-slate-100 shadow-2xl rounded-[2rem]">
-                         <QRCode
-                           value={`${window.location.origin}/verify?psid=${previewDoc.psid}`}
-                           size={112}
-                         />
-                      </div>
-                      <div className="max-w-[150px]">
+                      <a
+                        href={`${window.location.origin}/verify?psid=${previewDoc.psid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-white p-5 border-2 border-slate-100 shadow-2xl rounded-[2rem] hover:border-blue-300 transition-colors"
+                        title="Open verification page"
+                      >
+                        <QRCode
+                          value={`${window.location.origin}/verify?psid=${previewDoc.psid}`}
+                          size={112}
+                        />
+                      </a>
+                      <div className="max-w-[180px]">
                          <p className="text-[9px] font-black text-slate-900 uppercase tracking-widest leading-tight">Digital Signature Verified</p>
                          <p className="text-[8px] text-slate-400 font-bold mt-1.5 uppercase">Authentic Node Hash: {previewDoc.psid}</p>
+                         <a
+                           href={`${window.location.origin}/verify?psid=${previewDoc.psid}`}
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           className="text-[8px] text-blue-500 hover:text-blue-700 font-bold mt-2 block truncate underline underline-offset-2 transition-colors"
+                           title={`${window.location.origin}/verify?psid=${previewDoc.psid}`}
+                         >
+                           {window.location.origin}/verify?psid={previewDoc.psid}
+                         </a>
                       </div>
                    </div>
                    <div className="text-right">
@@ -650,27 +697,12 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                 </span>
               </div>
               <button
-                onClick={async () => {
-                  if (!previewDoc.verificationPayload || isPdfDownloading) return;
-                  setIsPdfDownloading(true);
-                  const url = await supabaseApi.getPdfUrl(previewDoc.psid);
-                  setIsPdfDownloading(false);
-                  if (url) {
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${previewDoc.psid}.pdf`;
-                    a.target = '_blank';
-                    a.rel = 'noopener noreferrer';
-                    a.click();
-                  }
-                }}
-                disabled={!previewDoc.verificationPayload || isPdfDownloading}
+                onClick={handleDownloadPdf}
+                disabled={!previewDoc.verificationPayload}
                 className="w-full lg:w-auto px-12 py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-[2rem] text-xs font-black uppercase tracking-[0.2em] shadow-2xl shadow-blue-200 transition-all flex items-center justify-center space-x-4 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isPdfDownloading
-                  ? <i className="fas fa-spinner fa-spin text-xl"></i>
-                  : <i className="fas fa-file-arrow-down text-xl opacity-70"></i>}
-                <span>{isPdfDownloading ? 'Preparing…' : 'Download Secure PDF'}</span>
+                <i className="fas fa-file-arrow-down text-xl opacity-70"></i>
+                <span>Download Secure PDF</span>
               </button>
             </div>
           </div>

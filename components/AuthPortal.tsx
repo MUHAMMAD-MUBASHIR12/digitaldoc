@@ -60,13 +60,14 @@ const AuthPortal: React.FC<AuthPortalProps> = ({ onLogin }) => {
         throw new Error(noProfileMsg);
       }
 
-      const rawRole = (profile.role as string | undefined)?.toLowerCase();
+      const p = profile as Record<string, unknown>;
+      const rawRole = (p.role as string | undefined)?.toLowerCase();
       const role = rawRole === 'admin' ? UserRole.ADMIN : UserRole.STUDENT;
 
       const userData: User = {
         id: data.user.id,
         email: data.user.email ?? trimmedEmail,
-        name: profile.full_name || data.user.user_metadata?.full_name || trimmedEmail.split('@')[0],
+        name: (p.full_name as string) || data.user.user_metadata?.full_name || trimmedEmail.split('@')[0],
         role,
       };
 

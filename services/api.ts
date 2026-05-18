@@ -5,11 +5,21 @@ const BASE_URL = 'http://localhost:8000/api';
 
 class ApiService {
   private async authHeaders(): Promise<Record<string, string>> {
-    const { data } = await supabase.auth.getSession();
+    let { data } = await supabase.auth.getSession();
+
+    if (!data.session?.access_token) {
+      const refreshed = await supabase.auth.refreshSession();
+      data = refreshed.data;
+    }
+
     const token = data.session?.access_token;
+    if (!token) {
+      throw new Error('Session expired — please login again');
+    }
+
     return {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
   }
 
@@ -41,8 +51,12 @@ class ApiService {
     }
 
     if (!response.ok) {
-      const err = await response.json().catch(() => ({ detail: 'Request failed' }));
-      throw new Error(err.detail || 'API request failed');
+      let detail = 'Request failed';
+      try {
+        const errBody = await response.json();
+        detail = errBody.detail || errBody.message || JSON.stringify(errBody);
+      } catch {}
+      throw new Error(`${response.status}: ${detail}`);
     }
 
     return response.json() as Promise<T>;
@@ -52,6 +66,20 @@ class ApiService {
     const baseUrl = encodeURIComponent(window.location.origin);
     return this.request(`/admin/approve/${requestId}?admin_name=${encodeURIComponent(adminName)}&base_url=${baseUrl}`, {
       method: 'POST',
+    });
+  }
+
+  async createStudentAuth(email: string, password: string, fullName: string): Promise<{ user_id: string; email: string }> {
+    return this.request('/admin/create-student-auth', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, full_name: fullName }),
+    }, 60000);
+  }
+
+  async createStudentProfile(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('/admin/create-student-profile', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 

@@ -82,7 +82,9 @@ core/security.py                ← get_current_user() + require_admin() (case-i
 models/database.py              ← UserRole + RequestStatus enums only
 routes/
   student_routes.py             ← POST /request, GET /my-requests
-  admin_routes.py               ← GET /requests, POST /approve/{id}, POST /reject/{id}, GET /logs
+  admin_routes.py               ← GET /requests, POST /approve/{id}, POST /reject/{id}, GET /logs,
+                                   GET /students, POST /create-student-auth, POST /create-student-profile,
+                                   PUT /update-student/{user_id}
   verification_routes.py        ← GET /api/verify/verify/{psid}?token= (public, no auth); strong path (psid+token) or legacy path (psid-only)
 
 # Infrastructure
@@ -125,7 +127,7 @@ There is **no routing library**. `App.tsx` holds `view: 'portal' | 'verify'` in 
 1. `AuthPortal.tsx` calls `supabase.auth.signInWithPassword()` — email is trimmed + lowercased before the call.
 2. After successful auth, both `AuthPortal.tsx` and `App.tsx` query `users` for `role, roll_number, full_name`.
 3. Role is normalized with `.toLowerCase()` before comparing — DB stores lowercase (`'student'`, `'admin'`).
-4. `App.tsx` subscribes to `supabase.auth.onAuthStateChange` and calls `buildUserProfile()` on session restore.
+4. `App.tsx` subscribes to `supabase.auth.onAuthStateChange` and calls `buildUserProfile()` on session restore. A 5 s safety-net timer (`LOADING_TIMEOUT_MS`) signs the user out and clears the spinner if `buildUserProfile` hangs — prevents permanent spinner on network failure.
 5. Every FastAPI call fetches the live session token via `supabase.auth.getSession()` — never cached.
 6. On a 401 from FastAPI, `api.ts` calls `supabase.auth.signOut()` then `window.location.reload()`.
 
@@ -135,10 +137,12 @@ There is **no routing library**. `App.tsx` holds `view: 'portal' | 'verify'` in 
 
 | Layer | File | Used for |
 |---|---|---|
-| Direct Supabase SDK | `services/supabaseApi.ts` | `getRequests`, `getLogs`, `createRequest`, `uploadPayment`, `verifyPsid`, `getPdfUrl`, `getStudentPublicInfo`, `rejectRequest` (unused — kept as fallback) |
-| FastAPI proxy | `services/api.ts` (`ApiService` class, exported as `api`) | Business logic only: `approveRequest`, `rejectRequest` |
+| Direct Supabase SDK | `services/supabaseApi.ts` | `getRequests`, `getLogs`, `createRequest`, `uploadPayment`, `verifyPsid`, `getPdfUrl`, `getStudentPublicInfo`, `getStudents`, `updateStudent`, `rejectRequest` (unused — kept as fallback) |
+| FastAPI proxy | `services/api.ts` (`ApiService` class, exported as `api`) | Business logic only: `approveRequest`, `rejectRequest`, `createStudentAuth`, `createStudentProfile` |
 
 `supabaseApi.rejectRequest()` exists but is **not called** from `AdminDashboard` — rejection goes through `api.rejectRequest()` (FastAPI). Do not wire `supabaseApi.rejectRequest()` back in; it bypasses server-side logging.
+
+`supabaseApi.updateStudent()` is called directly (not via FastAPI) because no server-side logic is needed for profile field edits. `api.createStudentAuth()` goes via FastAPI because it uses the Supabase service-role admin SDK to create auth users.
 
 ---
 
@@ -154,7 +158,15 @@ interface User { id, name, email, role: UserRole, registrationNumber? }
 interface DocumentRequest { id, studentId, studentName, docType, semesters[], psid, amount,
                             status, createdAt, paymentProofUrl?, adminNote?, verificationPayload? }
 interface ActivityLog { id, timestamp, user, action, details }
+interface StudentRecord {
+  id, fullName, email, rollNumber, department?,
+  degreeTitle?, program?, batchYear?, programDuration?,
+  semestersCompleted?, cgpa?, totalCredits?, conduct?,
+  cnic?, dob?, admissionDate?, isActive?
+}
 ```
+
+**Critical:** `StudentRecord` maps directly to `users` table rows. There is **no separate `students` table**. `department` is a plain text column — there is **no `departments` table** and no FK. Do not introduce `departmentId` or `departmentName`.
 
 ---
 
@@ -189,6 +201,8 @@ interface ActivityLog { id, timestamp, user, action, details }
 - `full_name` is NOT NULL — always include it in INSERT statements.
 - `role` CHECK constraint: only `'student'`, `'admin'`, `'registrar'` are valid (all **lowercase**).
 - DB column is `roll_number` — not `roll_no`. Using `roll_no` silently returns null.
+- `department` is a plain **TEXT** column — there is no separate `departments` table and no `department_id` FK. Do not introduce `department_id` anywhere.
+- There is no separate `students` table — all student data (academic profile + auth identity) lives in `users`.
 
 ### Other tables
 
@@ -246,6 +260,7 @@ ON CONFLICT (id) DO NOTHING;
 - Admin: rejection modal shows actual server error inline instead of swallowing it
 - Admin: request list shows loading spinner on mount and after actions
 - Admin: activity log shows `full_name` instead of raw UUID — `getLogs()` does a batch name lookup against `users`
+- Admin: **Student Management tab** — lists all students from `users WHERE role='student'`; Add New Student modal (creates Supabase Auth user via service-role API then patches academic fields onto the `users` row); Edit modal (updates `users` row directly via Supabase SDK); department is a free-text field, not a FK
 - Approve flow: ReportLab A4 PDF generated server-side, uploaded to `generated-pdfs` bucket, real SHA-256 hash stored
 - QR code embedded in the ReportLab PDF (via `qrcode[pil]`) — sits side-by-side with the verification table, points to `{frontend_origin}/verify?psid={psid}`; `base_url` passed from `window.location.origin` at approve time
 - Verification payload uses `secrets.token_hex` (CSPRNG)
@@ -338,7 +353,7 @@ Do not suggest automated payment gateways unless explicitly asked.
 - `AdminDashboard.tsx` — `window.prompt()` replaced with inline modal (`rejectModalId` / `rejectReason` / `isRejecting` state); textarea auto-focuses, submit disabled until non-empty, calls `api.rejectRequest` on confirm
 
 ### Phase 5 — PDF generation ✅ Complete
-- `admin_routes.py` — ReportLab A4 PDF with 8 sections (header, student info, academic summary, scope, verification, signatures, footer)
+- `admin_routes.py` — ReportLab A4 PDF with IST-format layout (see Phase 12 for full rewrite)
 - PDF uploaded to `generated-pdfs` Supabase Storage bucket; public URL stored in `documents.pdf_url`
 - Real SHA-256 hash of PDF bytes stored in `documents.hash`
 
@@ -379,3 +394,40 @@ Do not suggest automated payment gateways unless explicitly asked.
 - `StudentDashboard.tsx` `handleCreateRequest` — wrapped in `try/catch`; real error shown in rose banner above submit button
 - `StudentDashboard.tsx` payment flow — replaced hidden file input + `pendingUploadId` ref with dedicated payment modal: amount-due banner, Transaction Reference Number text input, styled file picker area, inline error display, Cancel/Submit buttons
 - `StudentDashboard.tsx` status badges — all 5 statuses now have distinct colors: `pending_payment`=amber, `under_review`=blue, `approved`=green, `rejected`=rose, `generated`=emerald
+
+### Phase 12 — IST PDF format rewrite ✅ Complete
+- `admin_routes.py` — `_build_pdf()` fully rewritten to match official IST (Institute of Space Technology) transcript format
+- University constants: `UNI_NAME`, `UNI_ADDRESS`, `UNI_TEL`, `UNI_EMAIL` defined at top of file
+- `_ist_header()` — IST logo placeholder (blue square with "IST") + university name/address/tel/email + rule
+- `_student_info_section()` — two-column block: Name/Degree/DOB left, Registration No/Admission Date/CNIC right
+- Four separate document builders dispatched by `doc_type`:
+  - `_build_transcript()` — "STUDENT ISSUED TRANSCRIPT"; FALL/SPRING semesters paired side-by-side (55%/45%); SGPA+cumulative CGPA row after each pair; footer with CREDITS EARNED (theory-lab breakdown), CGPA, Degree Conferred/Not Conferred, END OF TRANSCRIPT; Controller of Examinations signature
+  - `_build_marksheet()` — "SEMESTER RESULT SHEET"; shows only `requested_semesters`; full-width course table per semester; SGPA + PASS/FAIL result
+  - `_build_bonafide()` — "BONAFIDE CERTIFICATE"; formal enrollment paragraph; Registrar signature
+  - `_build_character()` — "CHARACTER CERTIFICATE"; conduct paragraph; Registrar signature
+- Grade points mapping: A+=4.00, A=4.00, A-=3.67 … D=1.00, F=0.00, W=0.00
+- SGPA computed as `sum(grade_points × credit_hours) / sum(credit_hours)` per semester; cumulative CGPA tracked across all semesters
+- Credits format: "3-0" (theory) or "0-1" (lab — credit_hours=1 and name contains 'Lab')
+- Semester labels derived from `batch_year` + `semester_number`: odd=FALL, even=SPRING
+- `approve_request` now fetches `student_semester_records` joined with `courses(code, name, credit_hours, semester_number)` and passes as `grades` to `_build_pdf()`
+- `_verification_section()` unchanged — PSID / URL / date / payload + QR code at end of every document type
+- All route handlers (list_all_requests, approve_request, reject_request, get_logs, list_students, create_student_auth, create_student_profile, update_student) unchanged
+
+**Required Supabase tables for transcript/marksheet:**
+```sql
+-- student_semester_records
+-- Columns: id, student_id (FK→students.id), course_id (FK→courses.id), grade (text), semester_number (int)
+
+-- courses
+-- Columns: id, code (text), name (text), credit_hours (int), semester_number (int)
+```
+These tables must exist for transcript/marksheet grades to populate. If absent, the course tables render empty but the PDF still generates successfully.
+
+### Phase 11 — Student Management tab + TypeScript cleanup ✅ Complete
+- `AdminDashboard.tsx` — two-tab layout (Ledger / Students); Students tab shows all students from `users WHERE role='student'` in a sortable table; "Add New Student" modal: creates Supabase Auth user via `POST /admin/create-student-auth` (service-role), then patches academic fields via `POST /admin/create-student-profile`; "Edit" modal: updates `users` row directly via `supabaseApi.updateStudent()` (no FastAPI needed); inline validation, success flash, and error banners on both modals
+- `admin_routes.py` — 4 new endpoints: `GET /students` (queries `users WHERE role='student'`), `POST /create-student-auth` (service-role `supabase.auth.admin.create_user` + upsert `users` row), `POST /create-student-profile` (UPDATE on existing `users` row), `PUT /update-student/{user_id}` (UPDATE on `users`)
+- `services/api.ts` — `createStudentAuth(email, password, fullName)`, `createStudentProfile(data)` added to `ApiService`
+- `services/supabaseApi.ts` — `getStudents()` queries `users` table; `updateStudent(userId, data)` updates `users` table; `department` is plain text (not a FK)
+- `types.ts` — `StudentRecord` interface added; no `userId`/`departmentId`/`departmentName` fields — maps 1-to-1 with `users` table columns
+- `App.tsx` — 5 s loading timeout safety net: if `buildUserProfile` hangs, signs out + clears spinner
+- TypeScript fixes — `AuthPortal.tsx` and `App.tsx` untyped Supabase `profile` casts; `supabaseApi.ts` insert/update args cast to `as any` to silence untyped client `never` errors; `npx tsc --noEmit` now passes with zero errors

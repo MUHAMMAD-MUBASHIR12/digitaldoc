@@ -7,12 +7,12 @@ import PublicVerification from './components/PublicVerification';
 import Navbar from './components/Navbar';
 import { supabase } from './services/supabase';
 
+const LOADING_TIMEOUT_MS = 60000;
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Read ?psid= and ?token= from the URL on first render.
-  // Both are used when a QR code is scanned from an approved PDF.
   const params = new URLSearchParams(window.location.search);
   const initialPsid  = params.get('psid')  ?? undefined;
   const initialToken = params.get('token') ?? undefined;
@@ -29,46 +29,82 @@ const App: React.FC = () => {
 
     if (error) throw error;
 
-    const rawRole = (profile?.role as string | undefined)?.toLowerCase();
+    const p = profile as Record<string, unknown> | null;
+    const rawRole = (p?.role as string | undefined)?.toLowerCase();
     const role = rawRole === 'admin' ? UserRole.ADMIN : UserRole.STUDENT;
 
     return {
       id: supabaseUserId,
       email,
-      name: profile?.full_name || fullName || email.split('@')[0],
+      name: (p?.full_name as string) || fullName || email.split('@')[0],
       role,
     };
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const profile = await buildUserProfile(
-          session.user.id,
-          session.user.email ?? '',
-          session.user.user_metadata?.full_name
-        );
-        setUser(profile);
+    let cancelled = false;
+    let sessionHandled = false;
+
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        cancelled = true;
+        setLoading(false);
       }
-      setLoading(false);
+    }, LOADING_TIMEOUT_MS);
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log('getSession result:', !!session?.user);
+      if (cancelled) return;
+      try {
+        if (session?.user) {
+          sessionHandled = true;
+          console.log('buildUserProfile starting...');
+          const profile = await buildUserProfile(
+            session.user.id,
+            session.user.email ?? '',
+            session.user.user_metadata?.full_name,
+          );
+          console.log('buildUserProfile done:', profile.email);
+          if (!cancelled) setUser(profile);
+        }
+      } catch {
+        if (!cancelled) {
+          await supabase.auth.signOut();
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          clearTimeout(timer);
+          setLoading(false);
+        }
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const profile = await buildUserProfile(
-            session.user.id,
-            session.user.email ?? '',
-            session.user.user_metadata?.full_name
-          );
-          setUser(profile);
+        if (event === 'SIGNED_IN' && session?.user && !sessionHandled) {
+          try {
+            const profile = await buildUserProfile(
+              session.user.id,
+              session.user.email ?? '',
+              session.user.user_metadata?.full_name,
+            );
+            setUser(profile);
+          } catch {
+            await supabase.auth.signOut();
+            setUser(null);
+          }
         } else if (event === 'SIGNED_OUT') {
           setUser(null);
         }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogin = (userData: User) => {

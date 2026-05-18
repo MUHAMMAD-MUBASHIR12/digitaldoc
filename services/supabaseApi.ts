@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { DocumentRequest, DocumentType, RequestStatus, ActivityLog, User } from '../types';
+import { DocumentRequest, DocumentType, RequestStatus, ActivityLog, User, StudentRecord } from '../types';
 
 const STATUS_MAP: Record<string, RequestStatus> = {
   pending_payment: RequestStatus.PENDING_PAYMENT,
@@ -67,7 +67,7 @@ export const supabaseApi = {
       const requestIds = rows.map(r => r.id as string);
       const { data: allPayments } = await supabase
         .from('payments')
-        .select('request_id, transaction_ref, payment_proof_url, amount, method, submitted_at')
+        .select('request_id, transaction_ref, payment_proof_url, amount, submitted_at')
         .in('request_id', requestIds);
 
       // Build map: request_id → latest payment (by submitted_at, ISO strings sort correctly)
@@ -93,12 +93,10 @@ export const supabaseApi = {
           student_name:         (u?.full_name as string) || '',
           payment_proof_url:    payment?.payment_proof_url ?? undefined,
           transaction_ref:      payment?.transaction_ref   ?? undefined,
-          payment_method:       payment?.method            ?? undefined,
           payment_submitted_at: payment?.submitted_at      ?? undefined,
         });
       });
-    } catch (err) {
-      console.error('supabaseApi.getRequests:', err);
+    } catch {
       return [];
     }
   },
@@ -141,8 +139,7 @@ export const supabaseApi = {
           details:   detailsStr,
         };
       });
-    } catch (err) {
-      console.error('supabaseApi.getLogs:', err);
+    } catch {
       return [];
     }
   },
@@ -181,7 +178,7 @@ export const supabaseApi = {
         amount,
         status:              'pending_payment',
         created_at:          new Date().toISOString(),
-      })
+      } as any)
       .select()
       .single();
 
@@ -193,7 +190,7 @@ export const supabaseApi = {
       user_id:    student.id,
       details:    { psid, doc_type: docType },
       created_at: new Date().toISOString(),
-    });
+    } as any);
 
     return mapRow(data as Record<string, unknown>);
   },
@@ -221,6 +218,7 @@ export const supabaseApi = {
     // 2. Update document_requests status to under_review
     const { error: statusError } = await supabase
       .from('document_requests')
+      // @ts-ignore — untyped Supabase client
       .update({ status: 'under_review' })
       .eq('id', requestId);
     if (statusError) throw new Error(`Status update failed: ${statusError.message}`);
@@ -242,7 +240,7 @@ export const supabaseApi = {
       payment_proof_url: proofUrl,
       status:            'submitted',
       submitted_at:      new Date().toISOString(),
-    });
+    } as any);
     if (payError) throw new Error(`Payment record failed: ${payError.message}`);
 
     // 5. Activity log — fire and forget
@@ -251,13 +249,14 @@ export const supabaseApi = {
       user_id:    userId,
       details:    { request_id: requestId, transaction_ref: transactionRef },
       created_at: new Date().toISOString(),
-    });
+    } as any);
   },
 
   // ── rejectRequest (fallback, not called from AdminDashboard) ─────────────────
   rejectRequest: async (requestId: string, reason: string): Promise<void> => {
     const { error } = await supabase
       .from('document_requests')
+      // @ts-ignore — untyped Supabase client
       .update({ status: 'rejected', admin_note: reason })
       .eq('id', requestId);
     if (error) throw error;
@@ -296,10 +295,62 @@ export const supabaseApi = {
         .maybeSingle();
       if (error) throw error;
       return (data as Record<string, unknown> | null)?.pdf_url as string | null ?? null;
-    } catch (err) {
-      console.error('supabaseApi.getPdfUrl:', err);
+    } catch {
       return null;
     }
+  },
+
+  // ── getStudents ───────────────────────────────────────────────────────────────
+  getStudents: async (): Promise<StudentRecord[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*, users(full_name, email, is_active), departments(name)')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return ((data || []) as Record<string, unknown>[]).map(row => {
+        const u = row.users as Record<string, unknown> | null;
+        const d = row.departments as Record<string, unknown> | null;
+        return {
+          id:                 row.id              as string,
+          userId:             row.user_id         as string,
+          fullName:           (u?.full_name       as string) || '',
+          email:              (u?.email           as string) || '',
+          isActive:           (u?.is_active       as boolean) ?? true,
+          rollNumber:         (row.roll_number    as string) || '',
+          cnic:               row.cnic            as string | undefined,
+          dob:                row.dob             as string | undefined,
+          admissionDate:      row.admission_date  as string | undefined,
+          departmentId:       row.department_id   as string | undefined,
+          departmentName:     (d?.name            as string) || '',
+          degreeTitle:        row.degree_title    as string | undefined,
+          program:            row.program         as string | undefined,
+          batchYear:          row.batch_year      as number | undefined,
+          programDuration:    row.program_duration as number | undefined,
+          semestersCompleted: row.semesters_completed as number | undefined,
+          cgpa:               row.cgpa            as number | undefined,
+          totalCredits:       row.total_credits   as number | undefined,
+          conduct:            row.conduct         as string | undefined,
+        };
+      });
+    } catch {
+      return [];
+    }
+  },
+
+  // ── updateStudent ─────────────────────────────────────────────────────────────
+  updateStudent: async (studentId: string, data: Partial<{
+    cgpa: number; semesters_completed: number; total_credits: number;
+    department_id: string; conduct: string; program: string;
+    batch_year: number; degree_title: string; admission_date: string;
+    program_duration: number; cnic: string; dob: string;
+  }>): Promise<void> => {
+    const { error } = await supabase
+      .from('students')
+      // @ts-ignore — Supabase client types mutations as never without a generated schema
+      .update(data)
+      .eq('id', studentId);
+    if (error) throw error;
   },
 
   // ── verifyPsid (legacy, kept for reference) ──────────────────────────────────
@@ -314,8 +365,7 @@ export const supabaseApi = {
         .maybeSingle();
       if (error) throw error;
       return data ? mapRow(data as Record<string, unknown>) : null;
-    } catch (err) {
-      console.error('supabaseApi.verifyPsid:', err);
+    } catch {
       return null;
     }
   },

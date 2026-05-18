@@ -3,7 +3,11 @@ import hashlib
 import secrets
 import datetime
 import qrcode
+from collections import defaultdict
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, Depends, Query
+from supabase_auth.types import AdminUserAttributes
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -18,18 +22,34 @@ from core.security import require_admin
 
 router = APIRouter()
 
-# ── Colour palette (matches the frontend blue/gold theme) ─────────────────────
-_NAVY  = colors.HexColor('#1e3a5f')
-_GOLD  = colors.HexColor('#b8962e')
-_LGRAY = colors.HexColor('#f7f7f7')
-_MGRAY = colors.HexColor('#888888')
-_BORD  = colors.HexColor('#dddddd')
+# ── IST University constants ──────────────────────────────────────────────────
+UNI_NAME    = "INSTITUTE OF SPACE TECHNOLOGY"
+UNI_ADDRESS = "1, Islamabad Highway, Islamabad (44000), Pakistan."
+UNI_TEL     = "Tel +92.51.9273316, Fax +92.51.9273310"
+UNI_EMAIL   = "email@ist.edu.pk, www.ist.edu.pk"
+
+# ── Colour palette ────────────────────────────────────────────────────────────
+_NAVY     = colors.HexColor('#1e3a5f')
+_GOLD     = colors.HexColor('#b8962e')
+_LGRAY    = colors.HexColor('#f7f7f7')
+_MGRAY    = colors.HexColor('#888888')
+_BORD     = colors.HexColor('#dddddd')
+_IST_BLUE = colors.HexColor('#003366')
 
 # Usable content width at 2 cm margins on each side
-_W = A4[0] - 4 * cm   # 17 cm
+_W = A4[0] - 4 * cm   # ~17 cm
+
+# ── Grade points mapping ──────────────────────────────────────────────────────
+GRADE_POINTS = {
+    'A+': 4.00, 'A': 4.00, 'A-': 3.67,
+    'B+': 3.33, 'B': 3.00, 'B-': 2.67,
+    'C+': 2.33, 'C': 2.00, 'C-': 1.67,
+    'D+': 1.33, 'D': 1.00,
+    'F':  0.00, 'W': 0.00,
+}
 
 
-# ── PDF helpers ───────────────────────────────────────────────────────────────
+# ── PDF helpers (unchanged) ───────────────────────────────────────────────────
 
 def _p(text: str, **kw) -> Paragraph:
     style = ParagraphStyle('_', parent=getSampleStyleSheet()['Normal'], **kw)
@@ -82,15 +102,554 @@ def _make_qr(data: str) -> io.BytesIO:
     return buf
 
 
-def _build_pdf(req: dict, student: dict, payload: str, verify_url: str) -> bytes:
-    """
-    Build and return a professional academic document PDF as bytes.
+# ── IST university header ─────────────────────────────────────────────────────
 
-    req        – row from document_requests
-    student    – row from users (full profile)
-    payload    – the SECURE-V2-... display string stored in document_requests
-    verify_url – full URL embedded in the QR code, includes psid + token
-    """
+def _ist_header(story: list) -> None:
+    """Render the standard IST header: logo placeholder + university info + rule."""
+    logo_cell = Table(
+        [[_p('<b>IST</b>', fontSize=14, fontName='Helvetica-Bold',
+             textColor=colors.white, alignment=TA_CENTER)]],
+        colWidths=[2.2 * cm],
+        rowHeights=[2.2 * cm],
+    )
+    logo_cell.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, -1), _IST_BLUE),
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+    ]))
+
+    info_w = _W - 2.2 * cm
+    uni_info = Table(
+        [
+            [_p(f'<b>{UNI_NAME}</b>', fontSize=15, fontName='Helvetica-Bold',
+                textColor=_IST_BLUE, alignment=TA_CENTER)],
+            [_p(UNI_ADDRESS, fontSize=8, fontName='Helvetica',
+                textColor=colors.black, alignment=TA_CENTER)],
+            [_p(UNI_TEL, fontSize=8, fontName='Helvetica',
+                textColor=colors.black, alignment=TA_CENTER)],
+            [_p(UNI_EMAIL, fontSize=8, fontName='Helvetica',
+                textColor=colors.black, alignment=TA_CENTER)],
+        ],
+        colWidths=[info_w],
+    )
+    uni_info.setStyle(TableStyle([
+        ('TOPPADDING',    (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+    ]))
+
+    header_tbl = Table([[logo_cell, uni_info]], colWidths=[2.2 * cm, info_w])
+    header_tbl.setStyle(TableStyle([
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+    ]))
+
+    story.append(header_tbl)
+    story.append(Spacer(1, 3 * mm))
+    story.append(_hr(thickness=1.5, color=_IST_BLUE, before=0, after=3))
+
+
+# ── Student info section ──────────────────────────────────────────────────────
+
+def _fmt_date(d) -> str:
+    if not d:
+        return '—'
+    try:
+        dt = datetime.date.fromisoformat(str(d)[:10])
+        return dt.strftime('%d %b %Y')
+    except Exception:
+        return str(d)
+
+
+def _student_info_section(story: list, student: dict) -> None:
+    """Two-column student info block: (Name/Degree/DOB) | (Reg No/Admission/CNIC)."""
+    full_name = student.get('full_name') or '—'
+    degree    = student.get('degree_title') or '—'
+    dob       = _fmt_date(student.get('dob'))
+    roll_no   = student.get('roll_number') or '—'
+    admission = _fmt_date(student.get('admission_date'))
+    cnic      = student.get('cnic') or '—'
+
+    def lbl(t): return _p(t, fontSize=8, fontName='Helvetica', textColor=_MGRAY)
+    def val(t): return _p(str(t), fontSize=9, fontName='Helvetica-Bold', textColor=colors.black)
+
+    half = _W / 2
+
+    left_tbl = Table(
+        [
+            [lbl('Name'),       val(full_name)],
+            [lbl('Degree'),     val(degree)],
+            [lbl('Birth Date'), val(dob)],
+        ],
+        colWidths=[2.8 * cm, half - 2.8 * cm],
+    )
+    right_tbl = Table(
+        [
+            [lbl('Registration No'),   val(roll_no)],
+            [lbl('Date Of Admission'), val(admission)],
+            [lbl('CNIC'),              val(cnic)],
+        ],
+        colWidths=[3.4 * cm, half - 3.4 * cm],
+    )
+    for tbl in (left_tbl, right_tbl):
+        tbl.setStyle(TableStyle([
+            ('TOPPADDING',    (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 5),
+        ]))
+
+    outer = Table([[left_tbl, right_tbl]], colWidths=[half, half])
+    outer.setStyle(TableStyle([
+        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+        ('LINEAFTER',     (0, 0), (0,  -1), 0.5, _BORD),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+    ]))
+    story.append(outer)
+    story.append(Spacer(1, 4 * mm))
+
+
+# ── Semester / grade helpers ──────────────────────────────────────────────────
+
+def _semester_label(sem_num: int, batch_year: int) -> str:
+    year_offset = (sem_num - 1) // 2
+    season = 'FALL' if sem_num % 2 == 1 else 'SPRING'
+    return f'{season} {batch_year + year_offset}'
+
+
+def _is_lab(course: dict) -> bool:
+    return (
+        course.get('credit_hours') == 1
+        and 'lab' in (course.get('name') or '').lower()
+    )
+
+
+def _credit_fmt(course: dict) -> str:
+    ch = course.get('credit_hours') or 0
+    return f'0-{ch}' if _is_lab(course) else f'{ch}-0'
+
+
+def _gp(grade: str) -> float:
+    return GRADE_POINTS.get((grade or '').strip().upper(), 0.0)
+
+
+def _sgpa(records: list) -> tuple:
+    """Return (sgpa, total_credits) for a list of grade records."""
+    pts = sum(_gp(r.get('grade', '')) * ((r.get('courses') or {}).get('credit_hours') or 0)
+              for r in records)
+    creds = sum((r.get('courses') or {}).get('credit_hours') or 0 for r in records)
+    return (pts / creds if creds else 0.0, creds)
+
+
+# ── Single-semester course table ──────────────────────────────────────────────
+
+def _course_table(records: list, col_widths: list) -> Table:
+    header = [
+        _p('COURSE CODE', fontSize=7, fontName='Helvetica-Bold', textColor=colors.white),
+        _p('COURSE TITLE', fontSize=7, fontName='Helvetica-Bold', textColor=colors.white),
+        _p('CR (T-L)', fontSize=7, fontName='Helvetica-Bold',
+           textColor=colors.white, alignment=TA_CENTER),
+        _p('GRADE', fontSize=7, fontName='Helvetica-Bold',
+           textColor=colors.white, alignment=TA_CENTER),
+    ]
+    rows = [header]
+    for r in records:
+        c = r.get('courses') or {}
+        rows.append([
+            _p(c.get('code') or '—', fontSize=7, fontName='Courier'),
+            _p(c.get('name') or '—', fontSize=7, fontName='Helvetica'),
+            _p(_credit_fmt(c), fontSize=7, fontName='Helvetica', alignment=TA_CENTER),
+            _p(r.get('grade') or '—', fontSize=8, fontName='Helvetica-Bold',
+               alignment=TA_CENTER),
+        ])
+
+    tbl = Table(rows, colWidths=col_widths)
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (-1,  0), _IST_BLUE),
+        ('ROWBACKGROUNDS',(0, 1), (-1, -1), [colors.white, _LGRAY]),
+        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+        ('INNERGRID',     (0, 0), (-1, -1), 0.25, _BORD),
+        ('TOPPADDING',    (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    return tbl
+
+
+# ── Verification block (shared by all document types) ─────────────────────────
+
+def _verification_section(story: list, psid: str, payload: str, verify_url: str) -> None:
+    issue_date = datetime.datetime.utcnow().strftime('%d %B %Y')
+
+    story.append(_hr(thickness=0.5, color=_BORD, before=4, after=2))
+    story.append(_p('CRYPTOGRAPHIC VERIFICATION', fontSize=7, fontName='Helvetica-Bold',
+                    textColor=_IST_BLUE, spaceAfter=3))
+
+    def lbl(t): return _p(t, fontSize=7, fontName='Helvetica', textColor=_MGRAY)
+
+    label_w = 3.4 * cm
+    qr_w    = 3.2 * cm
+    val_w   = _W - label_w - qr_w
+
+    verify_tbl = Table(
+        [
+            [lbl('PSID'),
+             _p(psid, fontSize=8, fontName='Courier-Bold', textColor=_IST_BLUE)],
+            [lbl('Verification URL'),
+             _p(verify_url.replace('&', '&amp;'), fontSize=7, fontName='Courier',
+                textColor=colors.black)],
+            [lbl('Issue Date'),
+             _p(issue_date, fontSize=7, fontName='Helvetica')],
+            [lbl('Payload'),
+             _p(payload, fontSize=7, fontName='Courier', textColor=colors.black)],
+        ],
+        colWidths=[label_w, val_w],
+    )
+    verify_tbl.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0), (0, -1), _LGRAY),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
+        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+        ('LINEBELOW',     (0, 0), (-1, -2), 0.25, _BORD),
+    ]))
+
+    qr_buf = _make_qr(verify_url)
+    qr_img = RLImage(qr_buf, width=2.8 * cm, height=2.8 * cm)
+    qr_block = Table(
+        [[qr_img],
+         [_p('Scan to verify', fontSize=5, fontName='Helvetica',
+             textColor=_MGRAY, alignment=TA_CENTER)]],
+        colWidths=[qr_w],
+    )
+    qr_block.setStyle(TableStyle([
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+
+    side = Table([[verify_tbl, qr_block]], colWidths=[_W - qr_w, qr_w])
+    side.setStyle(TableStyle([
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 0),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+    ]))
+    story.append(side)
+    story.append(Spacer(1, 3 * mm))
+
+
+# ── Signature line helper ─────────────────────────────────────────────────────
+
+def _sig_line_tbl(title: str, width: float) -> Table:
+    return Table(
+        [
+            [_p('_________________________', fontSize=9, fontName='Helvetica',
+                alignment=TA_CENTER)],
+            [_p(f'<b>{title}</b>', fontSize=8, fontName='Helvetica-Bold',
+                textColor=_IST_BLUE, alignment=TA_CENTER)],
+        ],
+        colWidths=[width],
+    )
+
+
+# ── TRANSCRIPT ────────────────────────────────────────────────────────────────
+
+def _build_transcript(story: list, req: dict, student: dict,
+                      payload: str, verify_url: str, grades: list) -> None:
+    batch_year = int(student.get('batch_year') or 2020)
+    cgpa_stored = float(student.get('cgpa') or 0)
+
+    story.append(_p('<u>STUDENT ISSUED TRANSCRIPT</u>',
+                    fontSize=13, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+                    alignment=TA_CENTER, spaceBefore=4, spaceAfter=6))
+
+    # Group by semester_number
+    sem_map: dict = defaultdict(list)
+    for r in grades:
+        sem_num = (r.get('courses') or {}).get('semester_number') or 0
+        sem_map[sem_num].append(r)
+
+    sem_numbers = sorted(k for k in sem_map if k > 0)
+
+    # Column widths for paired left (55%) / right (45%) tables
+    left_w  = _W * 0.55
+    right_w = _W * 0.45
+
+    def lc():  # left course-table cols summing to left_w
+        return [1.8*cm, left_w - 1.8*cm - 1.5*cm - 1.1*cm, 1.5*cm, 1.1*cm]
+
+    def rc():  # right course-table cols summing to right_w
+        return [1.6*cm, right_w - 1.6*cm - 1.4*cm - 1.0*cm, 1.4*cm, 1.0*cm]
+
+    cum_pts     = 0.0
+    cum_credits = 0
+
+    i = 0
+    while i < len(sem_numbers):
+        ls = sem_numbers[i]
+        rs = sem_numbers[i + 1] if i + 1 < len(sem_numbers) else None
+        i += 2
+
+        l_records = sem_map[ls]
+        r_records = sem_map[rs] if rs else []
+
+        # Left semester SGPA
+        l_sgpa, l_creds = _sgpa(l_records)
+        l_pts = l_sgpa * l_creds
+        cum_pts += l_pts
+        cum_credits += l_creds
+        l_cgpa = cum_pts / cum_credits if cum_credits else 0.0
+
+        # Right semester SGPA
+        r_sgpa, r_creds = (0.0, 0)
+        r_cgpa = l_cgpa
+        if rs:
+            r_sgpa, r_creds = _sgpa(r_records)
+            r_pts = r_sgpa * r_creds
+            cum_pts += r_pts
+            cum_credits += r_creds
+            r_cgpa = cum_pts / cum_credits if cum_credits else 0.0
+
+        # Semester label headers
+        l_label = _semester_label(ls, batch_year)
+        r_label = _semester_label(rs, batch_year) if rs else ''
+
+        hdr_row = [
+            _p(f'<b>{l_label}</b>', fontSize=8, fontName='Helvetica-Bold',
+               textColor=_IST_BLUE),
+            _p(f'<b>{r_label}</b>', fontSize=8, fontName='Helvetica-Bold',
+               textColor=_IST_BLUE) if r_label else _p(''),
+        ]
+        hdr_tbl = Table([hdr_row], colWidths=[left_w, right_w])
+        hdr_tbl.setStyle(TableStyle([
+            ('TOPPADDING',    (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+        ]))
+        story.append(hdr_tbl)
+
+        # Course tables side by side
+        l_tbl = _course_table(l_records, lc())
+        if rs:
+            r_tbl = _course_table(r_records, rc())
+            pair = Table([[l_tbl, r_tbl]], colWidths=[left_w, right_w])
+        else:
+            pair = Table([[l_tbl, _p('')]], colWidths=[left_w, right_w])
+
+        pair.setStyle(TableStyle([
+            ('TOPPADDING',    (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING',  (0, 0), (0,  -1), 3),
+            ('RIGHTPADDING',  (1, 0), (1,  -1), 0),
+            ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(pair)
+
+        # SGPA / CGPA summary row
+        l_sum = f'SGPA : {l_sgpa:.2f}    {l_creds} Cr    CGPA : {l_cgpa:.2f}'
+        r_sum = (f'SGPA : {r_sgpa:.2f}    {r_creds} Cr    CGPA : {r_cgpa:.2f}'
+                 if rs else '')
+
+        sum_tbl = Table(
+            [[_p(l_sum, fontSize=7, fontName='Helvetica-Bold', textColor=_IST_BLUE),
+              _p(r_sum, fontSize=7, fontName='Helvetica-Bold', textColor=_IST_BLUE)]],
+            colWidths=[left_w, right_w],
+        )
+        sum_tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, -1), _LGRAY),
+            ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+            ('TOPPADDING',    (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 5),
+        ]))
+        story.append(sum_tbl)
+        story.append(Spacer(1, 3 * mm))
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    all_records  = [r for recs in sem_map.values() for r in recs]
+    theory_cr    = sum((r.get('courses') or {}).get('credit_hours') or 0
+                       for r in all_records
+                       if not _is_lab(r.get('courses') or {}))
+    lab_cr       = sum((r.get('courses') or {}).get('credit_hours') or 0
+                       for r in all_records
+                       if _is_lab(r.get('courses') or {}))
+    total_cr     = theory_cr + lab_cr
+    final_cgpa   = cum_pts / cum_credits if cum_credits else cgpa_stored
+
+    sems_done    = student.get('semesters_completed') or len(sem_numbers)
+    prog_dur     = int(student.get('program_duration') or 4)
+    conferred    = ('Degree Conferred'
+                    if sems_done >= prog_dur * 2
+                    else 'Degree Not Conferred')
+
+    story.append(_hr(thickness=0.5, color=_BORD, before=2, after=2))
+    foot_data = [
+        [_p('<b>CREDITS EARNED</b>', fontSize=8, fontName='Helvetica-Bold',
+            textColor=_IST_BLUE),
+         _p(f'{total_cr} ({theory_cr}-{lab_cr})', fontSize=8,
+            fontName='Helvetica-Bold')],
+        [_p('<b>CGPA</b>', fontSize=8, fontName='Helvetica-Bold', textColor=_IST_BLUE),
+         _p(f'{final_cgpa:.2f}', fontSize=8, fontName='Helvetica-Bold')],
+        [_p('<b>STATUS</b>', fontSize=8, fontName='Helvetica-Bold', textColor=_IST_BLUE),
+         _p(conferred, fontSize=8, fontName='Helvetica-Bold')],
+    ]
+    foot_tbl = Table(foot_data, colWidths=[4 * cm, _W - 4 * cm])
+    foot_tbl.setStyle(TableStyle([
+        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+        ('LINEBELOW',     (0, 0), (-1, -2), 0.25, _BORD),
+        ('TOPPADDING',    (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
+    ]))
+    story.append(foot_tbl)
+    story.append(Spacer(1, 4 * mm))
+    story.append(_p('<b>— END OF TRANSCRIPT —</b>',
+                    fontSize=9, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+                    alignment=TA_CENTER, spaceAfter=6))
+
+    # Signature — right-aligned via outer table
+    sig = _sig_line_tbl('Controller of Examinations', 6 * cm)
+    sig_outer = Table([[sig]], colWidths=[_W])
+    sig_outer.setStyle(TableStyle([
+        ('ALIGN',      (0, 0), (-1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 16),
+    ]))
+    story.append(sig_outer)
+
+
+# ── MARKSHEET ─────────────────────────────────────────────────────────────────
+
+def _build_marksheet(story: list, req: dict, student: dict,
+                     payload: str, verify_url: str, grades: list) -> None:
+    batch_year    = int(student.get('batch_year') or 2020)
+    requested_sem = set(req.get('requested_semesters') or [])
+
+    story.append(_p('<u>SEMESTER RESULT SHEET</u>',
+                    fontSize=13, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+                    alignment=TA_CENTER, spaceBefore=4, spaceAfter=6))
+
+    sem_map: dict = defaultdict(list)
+    for r in grades:
+        sem_num = (r.get('courses') or {}).get('semester_number') or 0
+        if not requested_sem or sem_num in requested_sem:
+            sem_map[sem_num].append(r)
+
+    col_w = [2.0*cm, _W - 2.0*cm - 1.8*cm - 1.4*cm, 1.8*cm, 1.4*cm]
+
+    for sem_num in sorted(k for k in sem_map if k > 0):
+        records   = sem_map[sem_num]
+        sem_label = _semester_label(sem_num, batch_year)
+
+        story.append(_p(f'<b>{sem_label}</b>', fontSize=9, fontName='Helvetica-Bold',
+                        textColor=_IST_BLUE, spaceBefore=4, spaceAfter=2))
+        story.append(_course_table(records, col_w))
+
+        sgpa, creds = _sgpa(records)
+        result      = 'PASS' if sgpa >= 2.0 else 'FAIL'
+
+        story.append(_p(
+            f'SGPA : {sgpa:.2f}    Credits : {creds}    Result : <b>{result}</b>',
+            fontSize=8, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+            spaceBefore=2, spaceAfter=4,
+        ))
+        story.append(Spacer(1, 2 * mm))
+
+    story.append(Spacer(1, 5 * mm))
+    sig = _sig_line_tbl('Controller of Examinations', 6 * cm)
+    sig_outer = Table([[sig]], colWidths=[_W])
+    sig_outer.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+    ]))
+    story.append(sig_outer)
+
+
+# ── BONAFIDE CERTIFICATE ──────────────────────────────────────────────────────
+
+def _build_bonafide(story: list, req: dict, student: dict) -> None:
+    full_name  = student.get('full_name') or '—'
+    roll_no    = student.get('roll_number') or '—'
+    degree     = student.get('degree_title') or '—'
+    program    = student.get('program') or '—'
+    dept       = student.get('department') or '—'
+    admission  = _fmt_date(student.get('admission_date'))
+    issue_date = datetime.datetime.utcnow().strftime('%d %B %Y')
+
+    story.append(_p('<u>BONAFIDE CERTIFICATE</u>',
+                    fontSize=13, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+                    alignment=TA_CENTER, spaceBefore=4, spaceAfter=12))
+
+    body = (
+        f'This is to certify that <b>{full_name}</b> (Registration No. <b>{roll_no}</b>) '
+        f'is a bonafide student of the <b>{UNI_NAME}</b>, Islamabad, enrolled in the '
+        f'<b>{degree}</b> programme ({program}) in the Department of <b>{dept}</b>. '
+        f'The student has been admitted since <b>{admission}</b> and is currently pursuing '
+        f'his/her studies at this institution in good standing. '
+        f'This certificate is issued on request of the student for whatever lawful purpose '
+        f'it may serve. Issued on: <b>{issue_date}</b>.'
+    )
+    story.append(_p(body, fontSize=10, fontName='Helvetica', leading=17, spaceAfter=24))
+
+    sig = _sig_line_tbl('Registrar', 6 * cm)
+    sig_outer = Table([[sig]], colWidths=[_W])
+    sig_outer.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
+    story.append(sig_outer)
+
+
+# ── CHARACTER CERTIFICATE ─────────────────────────────────────────────────────
+
+def _build_character(story: list, req: dict, student: dict) -> None:
+    full_name  = student.get('full_name') or '—'
+    roll_no    = student.get('roll_number') or '—'
+    conduct    = student.get('conduct') or 'Good'
+    degree     = student.get('degree_title') or '—'
+    issue_date = datetime.datetime.utcnow().strftime('%d %B %Y')
+
+    story.append(_p('<u>CHARACTER CERTIFICATE</u>',
+                    fontSize=13, fontName='Helvetica-Bold', textColor=_IST_BLUE,
+                    alignment=TA_CENTER, spaceBefore=4, spaceAfter=12))
+
+    body = (
+        f'This is to certify that <b>{full_name}</b> (Registration No. <b>{roll_no}</b>), '
+        f'a student of <b>{degree}</b> at the <b>{UNI_NAME}</b>, Islamabad, is known to be '
+        f'of <b>{conduct}</b> character and conduct. During his/her academic career at this '
+        f'institution the student has maintained satisfactory behaviour and has not been '
+        f'involved in any activity contrary to the rules and regulations of the university. '
+        f'This certificate is issued on the basis of official records maintained in this '
+        f'office. Issued on: <b>{issue_date}</b>.'
+    )
+    story.append(_p(body, fontSize=10, fontName='Helvetica', leading=17, spaceAfter=24))
+
+    sig = _sig_line_tbl('Registrar', 6 * cm)
+    sig_outer = Table([[sig]], colWidths=[_W])
+    sig_outer.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
+    story.append(sig_outer)
+
+
+# ── Master PDF builder ────────────────────────────────────────────────────────
+
+def _build_pdf(req: dict, student: dict, payload: str, verify_url: str,
+               grades: list = []) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -98,223 +657,23 @@ def _build_pdf(req: dict, student: dict, payload: str, verify_url: str) -> bytes
         topMargin=2*cm,  bottomMargin=2*cm,
     )
 
-    def lbl(t: str) -> Paragraph:
-        return _p(t.upper(), fontSize=7, fontName='Helvetica', textColor=_MGRAY)
+    story    = []
+    doc_type = (req.get('doc_type') or 'certificate').lower()
+    psid     = req.get('psid', '—')
 
-    def val(t) -> Paragraph:
-        return _p(str(t or '—'), fontSize=9, fontName='Helvetica-Bold',
-                  textColor=colors.black)
+    _ist_header(story)
+    _student_info_section(story, student)
 
-    # ── Collect student / request data ────────────────────────────────────────
-    full_name  = student.get('full_name')        or req.get('student_name', '—')
-    roll_no    = student.get('roll_number')       or '—'
-    cnic       = student.get('cnic')              or '—'
-    dob        = str(student.get('dob')           or '—')
-    degree     = student.get('degree_title')      or '—'
-    dept_name  = student.get('department')        or '—'
-    program    = student.get('program')           or '—'
-    batch      = str(student.get('batch_year')    or '—')
-    admission  = str(student.get('admission_date') or '—')
-    conduct    = student.get('conduct')           or 'Good'
-    cgpa       = str(student.get('cgpa')                or '—')
-    sem_done   = str(student.get('semesters_completed') or '—')
-    credits    = str(student.get('total_credits')       or '—')
-    prog_dur   = f"{student.get('program_duration') or '—'} yrs"
+    if doc_type == 'transcript':
+        _build_transcript(story, req, student, payload, verify_url, grades)
+    elif doc_type == 'marksheet':
+        _build_marksheet(story, req, student, payload, verify_url, grades)
+    elif doc_type == 'certificate':
+        _build_bonafide(story, req, student)
+    else:
+        _build_bonafide(story, req, student)
 
-    psid       = req.get('psid', '—')
-    doc_type   = req.get('doc_type', 'Document').upper()
-    semesters  = sorted(req.get('requested_semesters') or [])
-    amount     = req.get('amount', 0)
-    sem_label  = ', '.join(f'Semester {s}' for s in semesters) or 'All Semesters'
-    issue_date = datetime.datetime.utcnow().strftime('%d %B %Y')
-
-    title_map = {
-        'TRANSCRIPT':  'OFFICIAL ACADEMIC TRANSCRIPT',
-        'MARKSHEET':   'OFFICIAL MARKSHEET',
-        'CERTIFICATE': 'CERTIFICATE OF COMPLETION',
-    }
-    title_text = title_map.get(doc_type, f'OFFICIAL {doc_type}')
-
-    story = []
-
-    # ── 1. University header ──────────────────────────────────────────────────
-    story += [
-        _p('DIGITAL UNIVERSITY',
-           fontSize=18, fontName='Helvetica-Bold', textColor=_NAVY,
-           alignment=TA_CENTER, spaceAfter=2),
-        _p('Office of the Registrar &bull; Academic Records Division',
-           fontSize=8, fontName='Helvetica', textColor=_MGRAY,
-           alignment=TA_CENTER, spaceAfter=1),
-        _p('Accredited Institution of Higher Learning &bull; Est. 1985',
-           fontSize=8, fontName='Helvetica', textColor=_MGRAY,
-           alignment=TA_CENTER, spaceAfter=4),
-        _hr(thickness=2, color=_NAVY, after=1),
-        _hr(thickness=1, color=_GOLD, before=1, after=4),
-    ]
-
-    # ── 2. Document type title ────────────────────────────────────────────────
-    story += [
-        _p(title_text,
-           fontSize=13, fontName='Helvetica-Bold', textColor=_NAVY,
-           alignment=TA_CENTER, spaceBefore=4, spaceAfter=2),
-        _hr(thickness=1, color=_GOLD, before=1, after=6),
-    ]
-
-    # ── 3. Student information (2-column label / value table) ─────────────────
-    story.append(_p('STUDENT INFORMATION',
-                    fontSize=7, fontName='Helvetica-Bold', textColor=_GOLD,
-                    spaceBefore=6, spaceAfter=3))
-
-    fields = [
-        ('Full Name',      full_name),  ('Roll Number',    roll_no),
-        ('CNIC',           cnic),       ('Date of Birth',  dob),
-        ('Degree Title',   degree),     ('Department',     dept_name),
-        ('Program',        program),    ('Batch Year',     batch),
-        ('Admission Date', admission),  ('Conduct',        conduct),
-    ]
-
-    info_rows = []
-    for i in range(0, len(fields), 2):
-        l1, v1 = fields[i]
-        l2, v2 = fields[i + 1] if i + 1 < len(fields) else ('', '')
-        info_rows.append([lbl(l1), val(v1), lbl(l2), val(v2)])
-
-    info_tbl = Table(info_rows, colWidths=[3*cm, 5*cm, 3*cm, 6*cm])
-    info_tbl.setStyle(TableStyle([
-        ('ROWBACKGROUNDS', (0, 0), (-1, -1), [colors.white, _LGRAY]),
-        ('TOPPADDING',     (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING',  (0, 0), (-1, -1), 5),
-        ('LEFTPADDING',    (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING',   (0, 0), (-1, -1), 6),
-        ('BOX',            (0, 0), (-1, -1), 0.5, _BORD),
-        ('LINEAFTER',      (1, 0), (1, -1),  0.5, _BORD),
-        ('VALIGN',         (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story += [info_tbl, Spacer(1, 0.3 * cm)]
-
-    # ── 4. Academic summary (4 stat boxes) ───────────────────────────────────
-    story.append(_p('ACADEMIC SUMMARY',
-                    fontSize=7, fontName='Helvetica-Bold', textColor=_GOLD,
-                    spaceBefore=4, spaceAfter=3))
-
-    stat_tbl = Table(
-        [[_stat_cell(cgpa,     'CGPA'),
-          _stat_cell(sem_done, 'SEMESTERS DONE'),
-          _stat_cell(credits,  'TOTAL CREDITS'),
-          _stat_cell(prog_dur, 'PROGRAMME DURATION')]],
-        colWidths=[_W / 4] * 4,
-    )
-    stat_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), _LGRAY),
-        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
-        ('LINEAFTER',     (0, 0), (-2, -1), 0.5, _BORD),
-        ('TOPPADDING',    (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story += [stat_tbl, Spacer(1, 0.3 * cm)]
-
-    # ── 5. Document scope ─────────────────────────────────────────────────────
-    story.append(_p('SCOPE OF THIS DOCUMENT',
-                    fontSize=7, fontName='Helvetica-Bold', textColor=_GOLD,
-                    spaceBefore=4, spaceAfter=3))
-
-    scope_tbl = Table(
-        [[lbl('Semesters Covered'), val(sem_label)],
-         [lbl('Document Type'),     val(doc_type.title())],
-         [lbl('Processing Fee'),    val(f'PKR {int(amount):,}')]],
-        colWidths=[4 * cm, 13 * cm],
-    )
-    scope_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (0, -1), _LGRAY),
-        ('TOPPADDING',    (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
-        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
-        ('LINEBELOW',     (0, 0), (-1, -2), 0.5, _BORD),
-    ]))
-    story += [scope_tbl, Spacer(1, 0.4 * cm)]
-
-    # ── 6. Cryptographic verification block ───────────────────────────────────
-    story += [
-        _hr(thickness=1, color=_GOLD, before=0, after=2),
-        _p('CRYPTOGRAPHIC VERIFICATION',
-           fontSize=7, fontName='Helvetica-Bold', textColor=_GOLD,
-           spaceBefore=2, spaceAfter=3),
-    ]
-
-    # verify_url already contains the full URL with psid + token — passed in
-    verify_tbl = Table(
-        [[lbl('PSID (Transaction Reference)'),
-          _p(psid, fontSize=9, fontName='Courier-Bold', textColor=_NAVY)],
-         [lbl('Verification Payload'),
-          _p(payload, fontSize=7, fontName='Courier', textColor=colors.black)],
-         [lbl('Issue Date'), val(issue_date)],
-         [lbl('Verify URL'), _p(verify_url.replace('&', '&amp;'), fontSize=7, fontName='Courier', textColor=_NAVY)]],
-        colWidths=[3.5 * cm, 10 * cm],
-    )
-    verify_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (0, -1), _LGRAY),
-        ('TOPPADDING',    (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
-        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
-        ('LINEBELOW',     (0, 0), (-1, -2), 0.5, _BORD),
-    ]))
-
-    qr_buf = _make_qr(verify_url)
-    qr_img = RLImage(qr_buf, width=3 * cm, height=3 * cm)
-    qr_block = Table(
-        [[qr_img],
-         [_p('Scan to verify', fontSize=5, fontName='Helvetica',
-             textColor=_MGRAY, alignment=TA_CENTER)]],
-        colWidths=[3.5 * cm],
-    )
-    qr_block.setStyle(TableStyle([
-        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING',    (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-    ]))
-
-    side_by_side = Table(
-        [[verify_tbl, qr_block]],
-        colWidths=[13.5 * cm, 3.5 * cm],
-    )
-    side_by_side.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING',  (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    story += [side_by_side, Spacer(1, 0.5 * cm)]
-
-    # ── 7. Signature lines ────────────────────────────────────────────────────
-    sig_tbl = Table(
-        [[_sig_block('REGISTRAR', 'Office of the Registrar'),
-          _sig_block('CONTROLLER OF EXAMINATIONS', 'Examination Division')]],
-        colWidths=[8.5 * cm, 8.5 * cm],
-    )
-    sig_tbl.setStyle(TableStyle([
-        ('TOPPADDING', (0, 0), (-1, -1), 25),
-        ('LINEAFTER',  (0, 0), (0,  -1), 0.5, _BORD),
-        ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
-    ]))
-    story += [sig_tbl, Spacer(1, 0.4 * cm)]
-
-    # ── 8. Footer ─────────────────────────────────────────────────────────────
-    story += [
-        _hr(thickness=0.5, color=_NAVY, before=0, after=2),
-        _p(
-            f'This document was generated by the Automated Document Management System of '
-            f'Digital University. It is valid only with the cryptographic signature above. '
-            f'To verify authenticity, visit the public verification portal and enter PSID: {psid}.',
-            fontSize=6, fontName='Helvetica', textColor=_MGRAY,
-            alignment=TA_CENTER, leading=9,
-        ),
-    ]
+    _verification_section(story, psid, payload, verify_url)
 
     doc.build(story)
     return buf.getvalue()
@@ -327,7 +686,7 @@ async def list_all_requests(auth_user=Depends(require_admin)):
     try:
         result = (
             supabase.table("document_requests")
-            .select("*, students(roll_number, users(full_name)), payments(transaction_ref, payment_proof_url, amount, method, status, submitted_at)")
+            .select("*, students(roll_number, users(full_name)), payments(transaction_ref, payment_proof_url, amount, status, submitted_at)")
             .order("created_at", desc=True)
             .execute()
         )
@@ -337,12 +696,12 @@ async def list_all_requests(auth_user=Depends(require_admin)):
             user_info = student_info.get("users") or {}
             row["student_name"] = user_info.get("full_name", "")
             row["roll_number"] = student_info.get("roll_number", "")
-            # Flatten the most recent payment into the row
-            payment_rows = row.pop("payments", None) or []
-            latest = payment_rows[-1] if payment_rows else {}
-            row["transaction_ref"]     = latest.get("transaction_ref")
-            row["payment_proof_url"]   = latest.get("payment_proof_url")
-            row["payment_method"]      = latest.get("method")
+            # payments is a one-to-one join — PostgREST returns a dict, not a list
+            latest = row.pop("payments", None) or {}
+            if isinstance(latest, list):
+                latest = latest[-1] if latest else {}
+            row["transaction_ref"]      = latest.get("transaction_ref")
+            row["payment_proof_url"]    = latest.get("payment_proof_url")
             row["payment_submitted_at"] = latest.get("submitted_at")
         return rows
     except Exception as e:
@@ -406,24 +765,34 @@ async def approve_request(
             "department": dept_name,
         }
 
-        # 3. Generate display payload (kept in document_requests for UI display)
+        # 3. Fetch grade records for transcript / marksheet
+        grade_result = (
+            supabase.table("student_semester_records")
+            .select("*, courses(code, name, credit_hours, semester_number)")
+            .eq("student_id", req["student_id"])
+            .order("semester_number")
+            .execute()
+        )
+        grades = grade_result.data or []
+
+        # 4. Generate display payload (kept in document_requests for UI display)
         initials = (user_row.get("full_name") or "XX")[:2].upper()
         sig1     = secrets.token_hex(2).upper()
         sig2     = secrets.token_hex(2).upper()
         payload  = f"SECURE-V2-{req['psid']}-{initials}-{sig1}-{sig2}"
 
-        # 4. Generate a cryptographically strong 128-bit verification token.
+        # 5. Generate a cryptographically strong 128-bit verification token.
         #    Stored in documents.verification_token and embedded in the QR URL.
         #    16 bytes = 128 bits = 3.4 × 10^38 possible values — brute-force infeasible.
         verification_token = secrets.token_hex(16)
 
-        # 5. Build the QR verify URL — includes both psid and token
+        # 6. Build the QR verify URL — includes both psid and token
         verify_url = f"{base_url}/verify?psid={req['psid']}&token={verification_token}"
 
-        # 6. Build the PDF (verify_url is embedded in the QR code inside the PDF)
-        pdf_bytes = _build_pdf(req, student, payload, verify_url)
+        # 7. Build the PDF (verify_url is embedded in the QR code inside the PDF)
+        pdf_bytes = _build_pdf(req, student, payload, verify_url, grades)
 
-        # 7. Upload PDF to Supabase Storage bucket 'generated-pdfs'
+        # 8. Upload PDF to Supabase Storage bucket 'generated-pdfs'
         file_path = f"{req['psid']}.pdf"
         try:
             supabase.storage.from_("generated-pdfs").upload(
@@ -443,16 +812,16 @@ async def approve_request(
 
         pdf_url = supabase.storage.from_("generated-pdfs").get_public_url(file_path)
 
-        # 8. Real SHA-256 hash of the PDF bytes
+        # 9. Real SHA-256 hash of the PDF bytes
         doc_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
-        # 9. Update document_requests: status → generated, store display payload
+        # 10. Update document_requests: status → generated, store display payload
         supabase.table("document_requests").update({
             "status": "generated",
             "verification_payload": payload,
         }).eq("id", request_id).execute()
 
-        # 10. Upsert generated_documents row
+        # 11. Upsert generated_documents row
         supabase.table("generated_documents").upsert(
             {
                 "request_id": request_id,
@@ -467,7 +836,7 @@ async def approve_request(
             on_conflict="psid",
         ).execute()
 
-        # 11. Activity log
+        # 12. Activity log
         supabase.table("activity_logs").insert({
             "action": "Document Approved & PDF Generated",
             "user_id": auth_user.id,
@@ -522,6 +891,132 @@ async def reject_request(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Student management models ─────────────────────────────────────────────────
+
+class CreateStudentAuthBody(BaseModel):
+    email: str
+    password: str
+    full_name: str
+
+class CreateStudentProfileBody(BaseModel):
+    user_id: str
+    roll_number: str
+    department_id: Optional[str] = None
+    cnic: Optional[str] = None
+    dob: Optional[str] = None
+    admission_date: Optional[str] = None
+    degree_title: Optional[str] = None
+    program: Optional[str] = None
+    batch_year: Optional[int] = None
+    program_duration: Optional[int] = 4
+    semesters_completed: Optional[int] = 0
+    cgpa: Optional[float] = 0.0
+    total_credits: Optional[int] = 0
+    conduct: Optional[str] = "Good"
+
+class UpdateStudentBody(BaseModel):
+    cgpa: Optional[float] = None
+    semesters_completed: Optional[int] = None
+    total_credits: Optional[int] = None
+    department_id: Optional[str] = None
+    conduct: Optional[str] = None
+    program: Optional[str] = None
+    batch_year: Optional[int] = None
+    degree_title: Optional[str] = None
+    admission_date: Optional[str] = None
+    program_duration: Optional[int] = None
+    cnic: Optional[str] = None
+    dob: Optional[str] = None
+
+
+# ── Student management routes ─────────────────────────────────────────────────
+
+@router.get("/students")
+async def list_students(auth_user=Depends(require_admin)):
+    try:
+        result = (
+            supabase.table("students")
+            .select("*, users(full_name, email, is_active), departments(name)")
+            .order("created_at")
+            .execute()
+        )
+        rows = result.data or []
+        out = []
+        for row in rows:
+            user_info = row.pop("users", None) or {}
+            dept_info = row.pop("departments", None) or {}
+            row["full_name"]       = user_info.get("full_name", "")
+            row["email"]           = user_info.get("email", "")
+            row["is_active"]       = user_info.get("is_active", True)
+            row["department_name"] = dept_info.get("name", "")
+            out.append(row)
+        return out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/create-student-auth")
+async def create_student_auth(body: CreateStudentAuthBody, auth_user=Depends(require_admin)):
+    try:
+        res = supabase.auth.admin.create_user(
+            AdminUserAttributes(
+                email=body.email,
+                password=body.password,
+                user_metadata={"full_name": body.full_name},
+                email_confirm=True,
+            )
+        )
+        if res.user is None:
+            raise HTTPException(status_code=400, detail="Failed to create auth user")
+
+        user_id = res.user.id
+
+        # Ensure row exists in public.users (trigger may not have fired yet)
+        supabase.table("users").upsert({
+            "id": user_id,
+            "email": body.email,
+            "full_name": body.full_name,
+            "role": "student",
+            "is_active": True,
+        }, on_conflict="id").execute()
+
+        return {"user_id": user_id, "email": body.email}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/create-student-profile")
+async def create_student_profile(body: CreateStudentProfileBody, auth_user=Depends(require_admin)):
+    try:
+        insert_data = body.model_dump(exclude_none=True)
+        result = supabase.table("students").insert(insert_data).execute()
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create student profile")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/update-student/{student_id}")
+async def update_student(student_id: str, body: UpdateStudentBody, auth_user=Depends(require_admin)):
+    try:
+        update_data = body.model_dump(exclude_none=True)
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        result = supabase.table("students").update(update_data).eq("id", student_id).execute()
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        return result.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/logs")

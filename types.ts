@@ -44,6 +44,28 @@ export interface DocumentRequest {
   verificationPayload?: string;
 }
 
+export interface StudentRecord {
+  id: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  rollNumber: string;
+  cnic?: string;
+  dob?: string;
+  admissionDate?: string;
+  departmentId?: string;
+  departmentName?: string;
+  degreeTitle?: string;
+  program?: string;
+  batchYear?: number;
+  programDuration?: number;
+  semestersCompleted?: number;
+  cgpa?: number;
+  totalCredits?: number;
+  conduct?: string;
+  isActive?: boolean;
+}
+
 export interface ActivityLog {
   id: string;
   timestamp: string;
