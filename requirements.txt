@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+supabase
+python-dotenv
+python-multipart
+pydantic[email]
+reportlab
+qrcode[pil]
+httpx
+pillow
