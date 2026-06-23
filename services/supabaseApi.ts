@@ -265,20 +265,28 @@ export const supabaseApi = {
   // ── getStudentPublicInfo ──────────────────────────────────────────────────────
   getStudentPublicInfo: async (
     studentUserId: string,
-  ): Promise<{ cgpa: number | null; degree_title: string | null; roll_number: string | null } | null> => {
+  ): Promise<{
+    cgpa: number | null;
+    degree_title: string | null;
+    roll_number: string | null;
+    semesters_completed: number | null;
+    program_duration: number | null;
+  } | null> => {
     try {
       const { data, error } = await supabase
         .from('students')
-        .select('cgpa, degree_title, roll_number')
+        .select('cgpa, degree_title, roll_number, semesters_completed, program_duration')
         .eq('user_id', studentUserId)
         .maybeSingle();
       if (error) return null;
       const row = data as Record<string, unknown> | null;
       if (!row) return null;
       return {
-        cgpa:         (row.cgpa         as number | null) ?? null,
-        degree_title: (row.degree_title as string | null) ?? null,
-        roll_number:  (row.roll_number  as string | null) ?? null,
+        cgpa:                (row.cgpa                as number | null) ?? null,
+        degree_title:        (row.degree_title        as string | null) ?? null,
+        roll_number:         (row.roll_number         as string | null) ?? null,
+        semesters_completed: (row.semesters_completed as number | null) ?? null,
+        program_duration:    (row.program_duration    as number | null) ?? null,
       };
     } catch {
       return null;

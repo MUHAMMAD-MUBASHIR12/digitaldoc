@@ -7,8 +7,6 @@ import PublicVerification from './components/PublicVerification';
 import Navbar from './components/Navbar';
 import { supabase } from './services/supabase';
 
-const LOADING_TIMEOUT_MS = 60000;
-
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,69 +40,54 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    let sessionHandled = false;
-
-    const timer = setTimeout(() => {
-      if (!cancelled) {
-        cancelled = true;
-        setLoading(false);
+    // onAuthStateChange is the primary auth driver — handles INITIAL_SESSION,
+    // SIGNED_IN, TOKEN_REFRESHED, and SIGNED_OUT without any timers.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user) {
+            try {
+              const profile = await buildUserProfile(
+                session.user.id,
+                session.user.email ?? '',
+                session.user.user_metadata?.full_name,
+              );
+              setUser(profile);
+            } catch {
+              setUser(null);
+            }
+          }
+          setLoading(false);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setLoading(false);
+        } else if (event === 'INITIAL_SESSION') {
+          if (!session?.user) {
+            setLoading(false);
+          }
+        }
       }
-    }, LOADING_TIMEOUT_MS);
+    );
 
+    // Eager check so the loading state resolves immediately when a valid
+    // session is already in localStorage (avoids a flash of the login page).
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      console.log('getSession result:', !!session?.user);
-      if (cancelled) return;
-      try {
-        if (session?.user) {
-          sessionHandled = true;
-          console.log('buildUserProfile starting...');
+      if (session?.user) {
+        try {
           const profile = await buildUserProfile(
             session.user.id,
             session.user.email ?? '',
             session.user.user_metadata?.full_name,
           );
-          console.log('buildUserProfile done:', profile.email);
-          if (!cancelled) setUser(profile);
-        }
-      } catch {
-        if (!cancelled) {
-          await supabase.auth.signOut();
+          setUser(profile);
+        } catch {
           setUser(null);
         }
-      } finally {
-        if (!cancelled) {
-          clearTimeout(timer);
-          setLoading(false);
-        }
+        setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user && !sessionHandled) {
-          try {
-            const profile = await buildUserProfile(
-              session.user.id,
-              session.user.email ?? '',
-              session.user.user_metadata?.full_name,
-            );
-            setUser(profile);
-          } catch {
-            await supabase.auth.signOut();
-            setUser(null);
-          }
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-        }
-      }
-    );
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleLogin = (userData: User) => {

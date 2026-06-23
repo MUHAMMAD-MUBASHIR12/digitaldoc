@@ -47,7 +47,28 @@
       "Bash(curl *)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" -Recurse -File | Where-Object { $_.LastWriteTime -gt \\(Get-Date\\).AddHours\\(-6\\) } | Sort-Object LastWriteTime -Descending | Select-Object FullName, LastWriteTime)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" -Recurse -File | Where-Object { $_.Extension -in @\\('.tsx', '.ts', '.py', '.sql'\\) } | Sort-Object LastWriteTime -Descending | Select-Object FullName, LastWriteTime | Select-Object -First 20)",
-      "Bash(C:/Users/mubi/python.exe *)"
+      "Bash(C:/Users/mubi/python.exe *)",
+      "Bash(\"C:\\\\Users\\\\mubi\\\\python.exe\" main.py)",
+      "Bash(pip show *)",
+      "Bash(python -c ' *)",
+      "Read(//tmp/**)",
+      "Bash(ping -n 3 127.0.0.1)",
+      "PowerShell(Start-Process -FilePath \"C:\\\\Users\\\\mubi\\\\python.exe\" -ArgumentList \"main.py\" -WorkingDirectory \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" -NoNewWindow -PassThru)",
+      "PowerShell(npx kill-port 8000)",
+      "PowerShell(C:\\\\Users\\\\mubi\\\\python.exe main.py)",
+      "PowerShell(Start-Sleep -Seconds 3; \\(Invoke-WebRequest -Uri http://localhost:8000 -UseBasicParsing\\).StatusCode)",
+      "PowerShell(npm run *)",
+      "PowerShell(Start-Sleep -Seconds 4; \\(Invoke-WebRequest -Uri http://localhost:3000 -UseBasicParsing\\).StatusCode)",
+      "PowerShell(\\(Invoke-WebRequest -Uri http://localhost:8000 -UseBasicParsing\\).Content)",
+      "PowerShell(npx kill-port 8000; Start-Sleep -Seconds 1; C:\\\\Users\\\\mubi\\\\python.exe main.py)",
+      "PowerShell(Start-Sleep -Seconds 3; curl.exe -s -w \"\\\\nHTTP_CODE:%{http_code}\" -H \"Authorization: Bearer eyJhbGciOiJFUzI1NiIsImtpZCI6ImUxZDQ2NmVmLTBhNDgtNDUzZC1iMDM2LWY0ZGFkYWU0NWZjYyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2xpdmNiaW95b2F1cG95dWVtdm1tLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI1ZTY0YWVlNS05OGNhLTQyNGEtYWUyZi0xNjgzYjc0MTUxODYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc5MTM2Mzc0LCJpYXQiOjE3NzkxMzI3NzQsImVtYWlsIjoiYWRtaW5AZGlnaXRhbGRvYy5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3OTEzMjc3NH1dLCJzZXNzaW9uX2lkIjoiY2Y2NmJiYzEtMTNlNS00NzdiLThjOGEtZWY3MjhiZmFlOTQxIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.XZXAQYQm309EB-naOHuzmS1p70w1eFDetFKvgnP-1U5wqYcyce_GD5obWXjV0Y8_jMIXNKM1qAfPQXeriYsuIA\" http://localhost:8000/api/admin/requests)",
+      "PowerShell(npx kill-port 8000 2>$null; Start-Sleep -Seconds 2; Write-Host \"Port cleared\")",
+      "PowerShell(Start-Sleep -Seconds 3; curl.exe -s -w \"\\\\nHTTP:%{http_code}\" -H \"Authorization: Bearer eyJhbGciOiJFUzI1NiIsImtpZCI6ImUxZDQ2NmVmLTBhNDgtNDUzZC1iMDM2LWY0ZGFkYWU0NWZjYyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2xpdmNiaW95b2F1cG95dWVtdm1tLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI1ZTY0YWVlNS05OGNhLTQyNGEtYWUyZi0xNjgzYjc0MTUxODYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc5MTM2Mzc0LCJpYXQiOjE3NzkxMzI3NzQsImVtYWlsIjoiYWRtaW5AZGlnaXRhbGRvYy5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3OTEzMjc3NH1dLCJzZXNzaW9uX2lkIjoiY2Y2NmJiYzEtMTNlNS00NzdiLThjOGEtZWY3MjhiZmFlOTQxIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.XZXAQYQm309EB-naOHuzmS1p70w1eFDetFKvgnP-1U5wqYcyce_GD5obWXjV0Y8_jMIXNKM1qAfPQXeriYsuIA\" http://localhost:8000/api/admin/requests)",
+      "PowerShell(npx tsc --noEmit 2>&1)",
+      "PowerShell(git add *)",
+      "Bash(git *)",
+      "Bash(Select-String -NotMatch \"node_modules|\\\\.rar\")",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" | Where-Object { $_.Name -ne 'node_modules' -and $_.Name -ne 'DigitalDoc.rar' } | Select-Object Name, LastWriteTime)"
     ]
   }
 }

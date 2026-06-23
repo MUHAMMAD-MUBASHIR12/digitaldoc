@@ -16,8 +16,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const [hasScrolledStep1, setHasScrolledStep1] = useState(false);
-  const [hasScrolledStep2, setHasScrolledStep2] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<DocumentRequest | null>(null);
 
   // Payment modal state
@@ -31,9 +29,10 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     roll_number: string | null;
     cgpa: number | null;
     degree_title: string | null;
+    semesters_completed: number | null;
+    program_duration: number | null;
   } | null>(null);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
   const paymentFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -46,13 +45,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     });
   }, [user.id]);
 
-  useEffect(() => {
-    if (showModal) {
-      setHasScrolledStep1(true);
-      setHasScrolledStep2(true);
-      if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    }
-  }, [showModal, modalStep]);
 
   const refreshRequests = async () => {
     setIsLoading(true);
@@ -81,8 +73,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     setModalStep('selection');
     setSelectedSemesters([]);
     setRequestError(null);
-    setHasScrolledStep1(false);
-    setHasScrolledStep2(false);
   };
 
   const openPaymentModal = (req: DocumentRequest) => {
@@ -90,6 +80,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     setTxRef('');
     setPaymentFile(null);
     setPaymentUploadError(null);
+    setIsUploading(false);
   };
 
   const closePaymentModal = () => {
@@ -124,17 +115,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
     setSelectedSemesters(prev =>
       prev.includes(sem) ? prev.filter(s => s !== sem) : [...prev, sem]
     );
-  };
-
-  const handleScrollCheck = () => {
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 20;
-      if (isAtBottom) {
-        if (modalStep === 'selection') setHasScrolledStep1(true);
-        else if (modalStep === 'confirmation') setHasScrolledStep2(true);
-      }
-    }
   };
 
   const statusBadgeClass = (status: RequestStatus) => {
@@ -300,8 +280,8 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
       {/* Payment proof upload modal */}
       {paymentModalReq && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden animate-scaleUp border border-white/20">
-            <div className="px-8 py-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden animate-scaleUp border border-white/20 max-h-[90vh]">
+            <div className="px-8 py-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
               <div>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Upload Payment Proof</h2>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">PSID: {paymentModalReq.psid}</p>
@@ -314,7 +294,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
               </button>
             </div>
 
-            <div className="p-8 space-y-6">
+            <div className="p-8 space-y-6 overflow-y-auto">
               {/* Amount due */}
               <div className="bg-amber-50 border border-amber-100 rounded-2xl px-6 py-4 flex items-center justify-between">
                 <span className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Amount Due</span>
@@ -381,7 +361,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
               )}
             </div>
 
-            <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex gap-4">
+            <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex gap-4 flex-shrink-0">
               <button
                 onClick={closePaymentModal}
                 className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-[10px] hover:text-slate-600 transition-colors"
@@ -444,8 +424,6 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                 </div>
               ) : (
                 <div
-                  ref={scrollRef}
-                  onScroll={handleScrollCheck}
                   className="overflow-y-auto p-6 md:p-10 space-y-12 custom-scrollbar flex-grow"
                 >
                   {modalStep === 'selection' ? (
@@ -457,39 +435,78 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                             { id: DocumentType.TRANSCRIPT, icon: 'fa-file-invoice', label: 'Transcript' },
                             { id: DocumentType.MARKSHEET, icon: 'fa-table-list', label: 'Marksheet' },
                             { id: DocumentType.CERTIFICATE, icon: 'fa-award', label: 'Certificate' },
-                          ].map(type => (
-                            <button
-                              key={type.id}
-                              onClick={() => setSelectedType(type.id)}
-                              className={`py-6 md:py-10 rounded-3xl text-[10px] font-black transition-all border-2 flex flex-col items-center gap-4 ${
-                                selectedType === type.id
-                                  ? 'bg-blue-600 border-blue-600 text-white shadow-2xl shadow-blue-300'
-                                  : 'bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:border-slate-200'
-                              }`}
-                            >
-                              <i className={`fas ${type.icon} text-xl md:text-2xl`}></i>
-                              <span className="tracking-tight uppercase">{type.label}</span>
-                            </button>
-                          ))}
+                          ].map(type => {
+                            const totalSems = (studentProfile?.program_duration ?? 4) * 2;
+                            const semsDone  = studentProfile?.semesters_completed ?? 0;
+                            const certLocked = type.id === DocumentType.CERTIFICATE
+                              && studentProfile !== null
+                              && semsDone < totalSems;
+                            return (
+                              <button
+                                key={type.id}
+                                onClick={() => !certLocked && setSelectedType(type.id)}
+                                disabled={certLocked}
+                                title={certLocked ? `Available after completing all ${totalSems} semesters (${semsDone}/${totalSems} done)` : undefined}
+                                className={`py-6 md:py-10 rounded-3xl text-[10px] font-black transition-all border-2 flex flex-col items-center gap-4 ${
+                                  certLocked
+                                    ? 'bg-slate-50 border-transparent text-slate-200 cursor-not-allowed'
+                                    : selectedType === type.id
+                                      ? 'bg-blue-600 border-blue-600 text-white shadow-2xl shadow-blue-300'
+                                      : 'bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100 hover:border-slate-200'
+                                }`}
+                              >
+                                <i className={`fas ${certLocked ? 'fa-lock' : type.icon} text-xl md:text-2xl`}></i>
+                                <span className="tracking-tight uppercase">{type.label}</span>
+                                {certLocked && (
+                                  <span className="text-[8px] font-bold text-slate-300 normal-case tracking-normal leading-tight text-center px-1">
+                                    {semsDone}/{totalSems} sems
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
                       <div className="space-y-5">
-                        <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">2. Target Semesters</p>
+                        <div className="flex items-center justify-between ml-1 mr-1">
+                          <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">2. Target Semesters</p>
+                          {selectedType === DocumentType.MARKSHEET && studentProfile?.semesters_completed != null && (
+                            <p className="text-[10px] font-bold text-slate-400">
+                              <i className="fas fa-info-circle mr-1 text-blue-300"></i>
+                              {studentProfile.semesters_completed} semester{studentProfile.semesters_completed !== 1 ? 's' : ''} completed
+                            </p>
+                          )}
+                        </div>
                         <div className="grid grid-cols-4 gap-2.5 md:gap-4">
-                          {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
-                            <button
-                              key={num}
-                              onClick={() => toggleSemester(num)}
-                              className={`h-14 md:h-16 rounded-2xl border-2 font-black text-sm transition-all flex items-center justify-center ${
-                                selectedSemesters.includes(num)
-                                  ? 'border-blue-600 bg-blue-600 text-white shadow-xl shadow-blue-200'
-                                  : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-300'
-                              }`}
-                            >
-                              S{num}
-                            </button>
-                          ))}
+                          {[1, 2, 3, 4, 5, 6, 7, 8].map(num => {
+                            const semsDone = studentProfile?.semesters_completed;
+                            const isLocked = selectedType === DocumentType.MARKSHEET
+                              && semsDone !== null && semsDone !== undefined
+                              && num > semsDone;
+                            return (
+                              <button
+                                key={num}
+                                onClick={() => !isLocked && toggleSemester(num)}
+                                disabled={isLocked}
+                                title={isLocked ? `Semester ${num} not yet completed` : undefined}
+                                className={`h-14 md:h-16 rounded-2xl border-2 font-black text-sm transition-all flex flex-col items-center justify-center gap-0.5 ${
+                                  isLocked
+                                    ? 'border-slate-100 bg-slate-50 text-slate-200 cursor-not-allowed'
+                                    : selectedSemesters.includes(num)
+                                      ? 'border-blue-600 bg-blue-600 text-white shadow-xl shadow-blue-200'
+                                      : 'border-slate-100 bg-slate-50 text-slate-400 hover:border-slate-300'
+                                }`}
+                              >
+                                {isLocked ? (
+                                  <>
+                                    <i className="fas fa-lock text-[9px]"></i>
+                                    <span className="text-[11px]">S{num}</span>
+                                  </>
+                                ) : `S${num}`}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
 
@@ -528,21 +545,13 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                              <p className="text-slate-900 font-black uppercase tracking-tight text-[11px]">Legal Declaration</p>
                              <p className="text-slate-800 font-bold italic leading-relaxed">"I hereby authorize the automated generation of my academic record from the university database."</p>
                           </div>
-                          <div className="mt-10 text-center">
-                            <p className="font-black text-blue-300 uppercase text-[10px] tracking-[0.4em] animate-pulse">Scroll to End to Enable Submission &darr;</p>
-                          </div>
+
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {((modalStep === 'selection' && !hasScrolledStep1) || (modalStep === 'confirmation' && !hasScrolledStep2)) && (
-                     <div className="text-center py-5 bg-white/95 backdrop-blur-md sticky bottom-0 border-t border-slate-50">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center">
-                           Review Required to Proceed <i className="fas fa-arrow-down ml-2 animate-bounce"></i>
-                        </span>
-                     </div>
-                  )}
+
                 </div>
               )}
             </div>
@@ -560,7 +569,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                     <>
                       <button onClick={closeModal} className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-[10px] hover:text-slate-600 transition-colors">Discard</button>
                       <button
-                        disabled={selectedSemesters.length === 0 || !hasScrolledStep1}
+                        disabled={!selectedType || selectedSemesters.length === 0}
                         onClick={() => setModalStep('confirmation')}
                         className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-black shadow-2xl shadow-blue-200 transition-all text-xs uppercase tracking-widest disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed active:scale-[0.98]"
                       >
@@ -571,7 +580,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                     <>
                       <button onClick={() => { setModalStep('selection'); setRequestError(null); }} className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-[10px] hover:text-slate-600 transition-colors">Back</button>
                       <button
-                        disabled={!hasScrolledStep2 || isSubmitting}
+                        disabled={isSubmitting}
                         onClick={handleCreateRequest}
                         className="flex-[2] py-4 bg-emerald-600 text-white rounded-2xl font-black shadow-2xl shadow-emerald-200 transition-all text-xs uppercase tracking-widest disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed flex items-center justify-center space-x-3 active:scale-[0.98]"
                       >

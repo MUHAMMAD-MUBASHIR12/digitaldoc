@@ -226,13 +226,9 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
   };
 
   const handleAddStudent = async () => {
-    console.log('=== handleAddStudent START ===');
-    console.log('addForm:', JSON.stringify(addForm));
     const err = validateAddForm();
-    console.log('validation error:', err);
     if (err) {
       setAddError(err);
-      console.log('blocked by validation:', err);
       return;
     }
     setAddLoading(true);
@@ -268,7 +264,6 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       await loadStudents();
       setTimeout(() => { setShowAddModal(false); setAddSuccess(false); }, 1400);
     } catch (err) {
-      console.error('handleAddStudent error:', err);
       setAddError(err instanceof Error ? err.message : String(err));
       setTimeout(() => { document.querySelector('[data-add-error]')?.scrollIntoView({ behavior: 'smooth' }); }, 100);
     } finally {
@@ -1018,8 +1013,8 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       ════════════════════════════════════════════════════════════════════════ */}
       {rejectModalId && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl z-[300] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-white/20 overflow-hidden animate-scaleUp">
-            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-white/20 overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]">
+            <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
               <div>
                 <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">Reject Request</h2>
                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Reason will be stored on the ledger entry</p>
@@ -1029,7 +1024,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                 <i className="fas fa-times"></i>
               </button>
             </div>
-            <div className="p-8 space-y-3">
+            <div className="p-8 space-y-3 overflow-y-auto flex-grow">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Rejection Reason</label>
               <textarea
                 ref={rejectTextareaRef}
@@ -1040,7 +1035,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                 onChange={(e) => setRejectReason(e.target.value)}
               />
             </div>
-            <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+            <div className="px-8 py-6 bg-slate-50 border-t border-slate-100 flex flex-col gap-3 flex-shrink-0">
               {rejectError && (
                 <p className="text-[9px] font-bold text-rose-600 uppercase tracking-widest text-center flex items-center justify-center gap-1">
                   <i className="fas fa-exclamation-circle"></i>{rejectError}

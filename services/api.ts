@@ -5,21 +5,18 @@ const BASE_URL = 'http://localhost:8000/api';
 
 class ApiService {
   private async authHeaders(): Promise<Record<string, string>> {
-    let { data } = await supabase.auth.getSession();
-
-    if (!data.session?.access_token) {
-      const refreshed = await supabase.auth.refreshSession();
-      data = refreshed.data;
+    let session = (await supabase.auth.getSession()).data.session;
+    if (!session) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
     }
-
-    const token = data.session?.access_token;
+    const token = session?.access_token;
     if (!token) {
-      throw new Error('Session expired — please login again');
+      throw new Error('Not authenticated. Please login again.');
     }
-
     return {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+      'Authorization': `Bearer ${token}`,
     };
   }
 

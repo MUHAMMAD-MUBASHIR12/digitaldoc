@@ -19,7 +19,7 @@ async def create_request(req: DocumentRequestCreate, auth_user=Depends(get_curre
     # Resolve students.id from users.id (student_id FK is students.id, not users.id)
     student_result = (
         supabase.table("students")
-        .select("id")
+        .select("id, semesters_completed, program_duration")
         .eq("user_id", auth_user.id)
         .limit(1)
         .execute()
@@ -29,7 +29,33 @@ async def create_request(req: DocumentRequestCreate, auth_user=Depends(get_curre
             status_code=404,
             detail="Student profile not found. Ensure a row exists in the students table for this user.",
         )
-    student_id = student_result.data[0]["id"]
+    student = student_result.data[0]
+    student_id = student["id"]
+    semesters_completed = student.get("semesters_completed") or 0
+    program_duration = student.get("program_duration") or 4
+    total_semesters = program_duration * 2
+
+    doc_type = req.doc_type.lower()
+
+    if doc_type == "marksheet":
+        for sem in req.semesters:
+            if sem > semesters_completed:
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"You have only completed {semesters_completed} semesters. "
+                        f"Cannot request marksheet for semester {sem}."
+                    ),
+                )
+    elif doc_type == "certificate":
+        if semesters_completed < total_semesters:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Degree certificate requires completion of all {total_semesters} semesters. "
+                    f"You have completed {semesters_completed}."
+                ),
+            )
 
     psid = str(uuid.uuid4().int)[:9]
     amount = len(req.semesters) * 500
