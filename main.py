@@ -70,6 +70,10 @@ app = FastAPI(
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://digitaldoc-phi.vercel.app",
+        "https://digitaldoc-phi.vercel.app/",
+    ],
     allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
