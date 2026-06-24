@@ -18,7 +18,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout, setView, currentView })
   };
 
   return (
-    <nav className="bg-white/90 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-[150] px-4">
+    <nav className="bg-white/90 backdrop-blur-xl border-b border-slate-100 sticky top-0 z-[150] px-2 md:px-4">
       <div className="container mx-auto h-16 md:h-20 flex items-center justify-between">
         <div 
           className="flex items-center space-x-2 md:space-x-3 cursor-pointer group" 

@@ -24,10 +24,18 @@ npm run build        # production build
 npx tsc --noEmit     # TypeScript check (no test suite exists)
 
 # Backend (Python / FastAPI)
-pip install fastapi uvicorn supabase python-dotenv python-multipart "pydantic[email]" reportlab "qrcode[pil]"
+pip install -r requirements.txt   # preferred — installs all dependencies from requirements.txt
 python main.py   # or: uvicorn main:app --reload
 # API at http://localhost:8000  •  Swagger at /docs
 ```
+
+---
+
+## Deployment
+
+- **Frontend**: Deployed to Vercel at `https://digitaldoc-phi.vercel.app`
+- **GitHub repo**: `https://github.com/MUHAMMAD-MUBASHIR12/digitaldoc` (branch: `main`)
+- **Backend**: FastAPI — must be deployed separately (Railway, Render, etc.) and set `VITE_API_URL` in Vercel env vars to point at the production API base URL.
 
 ---
 
@@ -35,9 +43,9 @@ python main.py   # or: uvicorn main:app --reload
 
 ### All resolved except one
 
-1. ~~**Missing Python packages**~~ ✅ Fixed — `supabase`, `python-multipart`, `qrcode[pil]`, and all dependencies installed into `C:\Users\mubi\python.exe` (Python 3.13.0). Backend starts and serves at `http://localhost:8000/`.
+1. ~~**Missing Python packages**~~ ✅ Fixed — all dependencies in `requirements.txt`; installed into `C:\Users\mubi\python.exe` (Python 3.13.0). Backend starts and serves at `http://localhost:8000/`.
 
-2. ~~**CORS missing port 3002**~~ ✅ Fixed — `main.py` now uses `allow_origin_regex=r"http://localhost:\d+"` so any localhost port is allowed.
+2. ~~**CORS missing port 3002**~~ ✅ Fixed — `main.py` uses `allow_origin_regex=r"http://localhost:\d+"` so any localhost port is allowed, plus explicit `allow_origins` for the Vercel production URL.
 
 3. ~~**Storage buckets not created**~~ ✅ Fixed — `payment-proofs` and `generated-pdfs` buckets exist and are set to Public in Supabase Storage.
 
@@ -76,6 +84,7 @@ services/
 
 # Backend
 main.py                         ← FastAPI app, CORS, RateLimitMiddleware, router mounts
+requirements.txt                ← Python dependencies (pip install -r requirements.txt)
 core/supabase_client.py         ← service-role client (bypasses RLS)
 core/security.py                ← get_current_user() + require_admin() (case-insensitive role check)
 models/database.py              ← UserRole + RequestStatus enums only
@@ -96,12 +105,13 @@ Path alias `@` maps to the project root (configured in both `vite.config.ts` and
 
 ## Environment variables
 
-**Frontend** (`.env.local`):
+**Frontend** (`.env.local` for local dev; Vercel dashboard for production):
 ```
 VITE_SUPABASE_URL=https://qqmgjifzgppxmdunecmf.supabase.co
 VITE_SUPABASE_ANON_KEY=<anon key>
+VITE_API_URL=https://your-backend.railway.app/api   # optional; falls back to http://localhost:8000/api
 ```
-Accessed in code as `import.meta.env.VITE_SUPABASE_URL`.
+Accessed in code as `import.meta.env.VITE_SUPABASE_URL` etc. `VITE_API_URL` is the only optional variable — omit it locally and the backend defaults to `http://localhost:8000/api`.
 
 **Backend** (`.env`):
 ```
@@ -109,7 +119,7 @@ SUPABASE_URL=https://qqmgjifzgppxmdunecmf.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service role key>
 ```
 
-Do not add any other `VITE_*` variables — they are bundled into client JS and publicly readable.
+All `VITE_*` variables are bundled into client JS and publicly readable — do not put secrets in them.
 
 ---
 
@@ -126,11 +136,9 @@ There is **no routing library**. `App.tsx` holds `view: 'portal' | 'verify'` in 
 1. `AuthPortal.tsx` calls `supabase.auth.signInWithPassword()` — email is trimmed + lowercased before the call.
 2. After successful auth, `App.tsx` queries `users` for `role, full_name`.
 3. Role is normalized with `.toLowerCase()` before comparing — DB stores lowercase (`'student'`, `'admin'`).
-4. `App.tsx` subscribes to `supabase.auth.onAuthStateChange` and calls `buildUserProfile()` on session restore. `LOADING_TIMEOUT_MS = 60000` (60 s) safety-net signs the user out and clears the spinner if `buildUserProfile` hangs.
+4. `App.tsx` uses `onAuthStateChange` as the **primary auth driver** (handles `SIGNED_IN`, `TOKEN_REFRESHED`, `SIGNED_OUT`, `INITIAL_SESSION` events) plus an eager `supabase.auth.getSession()` check on mount so loading resolves immediately when a session exists in localStorage. No timers, no forced signOut, no `LOADING_TIMEOUT_MS`.
 5. Every FastAPI call fetches the live session token via `supabase.auth.getSession()` — never cached. If the session has expired, `authHeaders()` attempts a refresh before throwing.
 6. On a 401 from FastAPI, `api.ts` calls `supabase.auth.signOut()` then `window.location.reload()`.
-
-> **Note:** `App.tsx` currently contains `console.log` debug statements (lines ~56, 62, 67) that were left in during development. Remove before a production build.
 
 ---
 
@@ -146,6 +154,22 @@ There is **no routing library**. `App.tsx` holds `view: 'portal' | 'verify'` in 
 `supabaseApi.updateStudent(studentId, data)` updates the **`students` table** directly (no FastAPI needed — no server-side logic required for field edits). The `studentId` parameter is `students.id`, not `users.id`.
 
 `api.createStudentAuth()` goes via FastAPI because it uses the Supabase service-role admin SDK to create auth users.
+
+`api.ts` `BASE_URL` reads `import.meta.env.VITE_API_URL` first, falls back to `http://localhost:8000/api`.
+
+---
+
+## Document request validation
+
+Enforced both in `routes/student_routes.py` (authoritative) and `StudentDashboard.tsx` (UX — disabled buttons).
+
+| Doc type | Rule |
+|---|---|
+| **Transcript** | Always allowed |
+| **Marksheet** | Only semesters ≤ `semesters_completed` are selectable; backend raises 422 if any requested semester exceeds this |
+| **Certificate** | Requires `semesters_completed >= program_duration × 2`; button locked with counter until condition is met |
+
+Frontend reads `semesters_completed` and `program_duration` from `supabaseApi.getStudentPublicInfo()` on mount and stores them in `studentProfile` state.
 
 ---
 
@@ -292,7 +316,9 @@ ON CONFLICT (id) DO NOTHING;
 
 ### Real and working
 - Supabase Auth login, session restore, role-based view switching
-- Student: create request (multi-step modal with scroll-to-consent), view own requests, status badges, loading state on fetch
+- Auth session: `onAuthStateChange`-primary pattern with eager `getSession()` — survives page refresh and JWT auto-renewal (TOKEN_REFRESHED event keeps user state current)
+- Student: create request (multi-step modal), view own requests, status badges, loading state on fetch
+- Student: document type validation — Certificate locked until all semesters done; Marksheet semester buttons locked beyond `semesters_completed`
 - Student: payment proof upload — dedicated modal with Transaction Reference Number text input + file picker → Supabase Storage `payment-proofs` bucket → `payments` row inserted with `transaction_ref`; `document_requests` status updated to `under_review`; upload errors surfaced inline; activity log written on success
 - Student: create-request errors surfaced inside the modal with real Supabase error message; no silent failures
 - Student: status badge colors — `pending_payment`=amber, `under_review`=blue, `approved`=green, `rejected`=rose, `generated`=emerald
@@ -316,11 +342,11 @@ ON CONFLICT (id) DO NOTHING;
 - Token bypass attack prevention: token supplied but no match → `verified=false`, no legacy fallback
 - JWT validation on every FastAPI route; admin-role guard (case-insensitive)
 - Rate limiting middleware on all FastAPI routes (`RateLimitMiddleware` in `main.py`)
-- CORS allows any `http://localhost:<port>` via `allow_origin_regex`
+- CORS: `allow_origins` includes `https://digitaldoc-phi.vercel.app`; `allow_origin_regex` allows any `http://localhost:<port>`
 - RLS policy SQL executed in Supabase ✅
+- Mobile responsive: all stat card grids (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`), request cards (`flex-col md:flex-row`), tables (`overflow-x-auto`), modals (`max-h-[90vh]` with `overflow-y-auto` body), Navbar hamburger menu
 
 ### Known issues / not yet done
-- `console.log` debug statements remain in `App.tsx` (lines ~56, 62, 67) — remove before production
 - `verification_token` column in `generated_documents` needs the SQL migration (Known env issue #5)
 
 ### Supabase Storage buckets required

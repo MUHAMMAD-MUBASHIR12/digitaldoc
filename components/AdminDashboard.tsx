@@ -387,14 +387,14 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       {activeTab === 'ledger' && (
         <>
           {/* Stat cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {[
               { label: 'Pending Review',   val: requests.filter(r => r.status === RequestStatus.UNDER_REVIEW).length,    icon: 'fa-shield-halved',      iconCls: 'bg-rose-50 text-rose-500 border-rose-100',     border: 'border-l-4 border-l-rose-400' },
               { label: 'Awaiting Payment', val: requests.filter(r => r.status === RequestStatus.PENDING_PAYMENT).length, icon: 'fa-clock',              iconCls: 'bg-amber-50 text-amber-500 border-amber-100',   border: 'border-l-4 border-l-amber-400' },
               { label: 'Documents Issued', val: requests.filter(r => r.status === RequestStatus.GENERATED).length,       icon: 'fa-file-circle-check',  iconCls: 'bg-emerald-50 text-emerald-500 border-emerald-100', border: 'border-l-4 border-l-emerald-400' },
               { label: 'Audit Rejections', val: requests.filter(r => r.status === RequestStatus.REJECTED).length,        icon: 'fa-ban',                iconCls: 'bg-slate-50 text-slate-400 border-slate-200',   border: 'border-l-4 border-l-slate-400' },
             ].map((stat, i) => (
-              <div key={i} className={`bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4 ${stat.border}`}>
+              <div key={i} className={`bg-white p-3 md:p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-3 md:space-x-4 ${stat.border}`}>
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${stat.iconCls}`}>
                   <i className={`fas ${stat.icon}`}></i>
                 </div>
@@ -472,7 +472,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                             </span>
                             <span className="text-[10px] font-bold text-blue-600">PKR {req.amount.toLocaleString()}</span>
                             {req.createdAt && (
-                              <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">
+                              <span className="hidden sm:inline text-[9px] font-bold text-slate-300 uppercase tracking-widest">
                                 {new Date(req.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                               </span>
                             )}
@@ -490,18 +490,18 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                               <i className="fas fa-receipt text-blue-400 text-xs"></i>View Payment
                             </button>
                           )}
-                          <div className="flex gap-2">
+                          <div className="flex flex-col sm:flex-row gap-2">
                             <button
                               disabled={verifyingId !== null}
                               onClick={() => handleReject(req.id)}
-                              className="flex-1 py-3.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                              className="w-full sm:flex-1 py-3.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                             >
                               <i className="fas fa-times-circle text-xs"></i>Reject
                             </button>
                             <button
                               disabled={verifyingId !== null}
                               onClick={() => handleApprove(req.id)}
-                              className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white px-5 py-3.5 rounded-2xl font-bold shadow-xl shadow-blue-200 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                              className="w-full sm:flex-[2] bg-blue-600 hover:bg-blue-700 text-white px-5 py-3.5 rounded-2xl font-bold shadow-xl shadow-blue-200 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               {verifyingId === req.id
                                 ? <i className="fas fa-spinner fa-spin text-xs"></i>
@@ -602,9 +602,14 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                 <table className="w-full">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100">
-                      {['Full Name', 'Roll No.', 'Department', 'Program', 'Sem.', 'CGPA', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>
-                      ))}
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Full Name</th>
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Roll No.</th>
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Department</th>
+                      <th className="hidden md:table-cell px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Program</th>
+                      <th className="hidden md:table-cell px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Sem.</th>
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">CGPA</th>
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
+                      <th className="px-5 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -620,8 +625,8 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                           <span className="font-mono text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg">{s.rollNumber || '—'}</span>
                         </td>
                         <td className="px-5 py-4 text-[11px] font-medium text-slate-600 whitespace-nowrap">{s.departmentName || '—'}</td>
-                        <td className="px-5 py-4 text-[11px] font-medium text-slate-600 max-w-[140px] truncate">{s.program || '—'}</td>
-                        <td className="px-5 py-4 text-center">
+                        <td className="hidden md:table-cell px-5 py-4 text-[11px] font-medium text-slate-600 max-w-[140px] truncate">{s.program || '—'}</td>
+                        <td className="hidden md:table-cell px-5 py-4 text-center">
                           <span className="text-[11px] font-black text-slate-700">{s.semestersCompleted ?? '—'}</span>
                         </td>
                         <td className="px-5 py-4 text-center">

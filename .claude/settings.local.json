@@ -68,7 +68,8 @@
       "PowerShell(git add *)",
       "Bash(git *)",
       "Bash(Select-String -NotMatch \"node_modules|\\\\.rar\")",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" | Where-Object { $_.Name -ne 'node_modules' -and $_.Name -ne 'DigitalDoc.rar' } | Select-Object Name, LastWriteTime)"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\mubi\\\\Desktop\\\\DigitalDoc\" | Where-Object { $_.Name -ne 'node_modules' -and $_.Name -ne 'DigitalDoc.rar' } | Select-Object Name, LastWriteTime)",
+      "WebFetch(domain:digitaldoc-phi.vercel.app)"
     ]
   }
 }

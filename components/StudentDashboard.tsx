@@ -141,7 +141,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
           <div className="inline-flex items-center px-3 py-1 bg-blue-600 text-white text-[10px] font-bold uppercase tracking-widest rounded shadow-lg shadow-blue-200">
             Student Desktop
           </div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">Welcome, {user.name}</h1>
+          <h1 className="text-2xl md:text-4xl font-extrabold text-slate-900 tracking-tight leading-tight">Welcome, {user.name}</h1>
           <p className="text-slate-500 text-base font-medium max-w-xl">Manage your verified academic archive. All documents undergo registrar counter-validation before issuance.</p>
         </div>
         <button
@@ -153,8 +153,8 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
         </button>
       </header>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        <div className="bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4 md:space-x-5 transition-transform hover:-translate-y-1">
           <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-300 border border-slate-100 shadow-inner">
             <i className="fas fa-fingerprint text-xl"></i>
           </div>
@@ -163,7 +163,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
             <p className="text-sm font-mono font-black text-slate-800 tracking-tighter">{studentProfile?.roll_number ?? '—'}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+        <div className="bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4 md:space-x-5 transition-transform hover:-translate-y-1">
           <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500 border border-amber-100">
             <i className="fas fa-hourglass-half text-xl"></i>
           </div>
@@ -172,7 +172,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
             <p className="text-2xl font-black text-slate-900 leading-none mt-1">{requests.filter(r => r.status !== RequestStatus.GENERATED && r.status !== RequestStatus.REJECTED).length}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+        <div className="bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4 md:space-x-5 transition-transform hover:-translate-y-1">
           <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 border border-blue-100">
             <i className="fas fa-shield-check text-xl"></i>
           </div>
@@ -181,7 +181,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
             <p className="text-2xl font-black text-slate-900 leading-none mt-1">{requests.filter(r => r.status === RequestStatus.GENERATED).length}</p>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-5 transition-transform hover:-translate-y-1">
+        <div className="bg-white p-4 md:p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center space-x-4 md:space-x-5 transition-transform hover:-translate-y-1">
           <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 border border-emerald-100">
             <i className="fas fa-star-half-stroke text-xl"></i>
           </div>
@@ -254,7 +254,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                     {req.status === RequestStatus.PENDING_PAYMENT && (
                       <button
                         onClick={() => openPaymentModal(req)}
-                        className="border-2 border-blue-500 hover:bg-blue-50 text-blue-600 px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center ml-auto gap-2"
+                        className="border-2 border-blue-500 hover:bg-blue-50 text-blue-600 px-3 py-2 md:px-5 md:py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center ml-auto gap-1.5 md:gap-2"
                       >
                         <i className="fas fa-upload text-xs"></i>
                         Proof Upload
@@ -262,7 +262,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                     )}
                     {req.status === RequestStatus.GENERATED && (
                       <button
-                        className="border-2 border-emerald-500 hover:bg-emerald-50 text-emerald-600 px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center ml-auto gap-2"
+                        className="border-2 border-emerald-500 hover:bg-emerald-50 text-emerald-600 px-3 py-2 md:px-5 md:py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center ml-auto gap-1.5 md:gap-2"
                         onClick={() => setPreviewDoc(req)}
                       >
                         <i className="fas fa-eye text-xs"></i>
@@ -279,8 +279,8 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
 
       {/* Payment proof upload modal */}
       {paymentModalReq && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden animate-scaleUp border border-white/20 max-h-[90vh]">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl z-[200] flex items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-none sm:rounded-[3rem] shadow-2xl w-full max-w-lg flex flex-col overflow-hidden animate-scaleUp border border-white/20 h-full sm:h-auto sm:max-h-[90vh]">
             <div className="px-8 py-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
               <div>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Upload Payment Proof</h2>
