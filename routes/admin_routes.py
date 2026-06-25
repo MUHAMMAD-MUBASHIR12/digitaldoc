@@ -78,16 +78,27 @@ def _stat_cell(value: str, label: str) -> Table:
     )
 
 
-def _sig_block(title: str, dept: str) -> Table:
-    return Table(
-        [[_p('_________________________',
-              fontSize=9, fontName='Helvetica', alignment=TA_CENTER)],
-         [_p(title, fontSize=8, fontName='Helvetica-Bold',
-              textColor=_NAVY, alignment=TA_CENTER)],
-         [_p(dept,  fontSize=7, fontName='Helvetica',
-              textColor=_MGRAY, alignment=TA_CENTER)]],
-        colWidths=[8.5 * cm],
-    )
+def _sig_block(title: str, name: str, department: str) -> Table:
+    rows = [
+        [_p('~ - ~ - ~ - ~ - ~ - ~ - ~ - ~',
+            fontSize=8, fontName='Helvetica', textColor=_MGRAY, alignment=TA_CENTER)],
+        [_p(f'<b>{name}</b>', fontSize=9, fontName='Helvetica-Bold',
+            textColor=_NAVY, alignment=TA_CENTER)],
+        [_p(title, fontSize=8, fontName='Helvetica-Bold',
+            textColor=_IST_BLUE, alignment=TA_CENTER)],
+        [_p(department, fontSize=7, fontName='Helvetica',
+            textColor=_MGRAY, alignment=TA_CENTER)],
+        [_p('( Official Stamp )', fontSize=6, fontName='Helvetica',
+            textColor=_MGRAY, alignment=TA_CENTER)],
+    ]
+    tbl = Table(rows, colWidths=[8.5 * cm])
+    tbl.setStyle(TableStyle([
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('BOX',           (0, 4), (0, 4), 0.5, _BORD),
+    ]))
+    return tbl
 
 
 def _make_qr(data: str) -> io.BytesIO:
@@ -355,18 +366,46 @@ def _verification_section(story: list, psid: str, payload: str, verify_url: str)
     story.append(Spacer(1, 3 * mm))
 
 
-# ── Signature line helper ─────────────────────────────────────────────────────
+# ── Bank account details box ──────────────────────────────────────────────────
 
-def _sig_line_tbl(title: str, width: float) -> Table:
-    return Table(
-        [
-            [_p('_________________________', fontSize=9, fontName='Helvetica',
-                alignment=TA_CENTER)],
-            [_p(f'<b>{title}</b>', fontSize=8, fontName='Helvetica-Bold',
-                textColor=_IST_BLUE, alignment=TA_CENTER)],
-        ],
-        colWidths=[width],
-    )
+def _bank_details_box(story: list) -> None:
+    """Render a bordered bank account info box with a blue header."""
+    details = [
+        ('Bank Name',      'National Bank of Pakistan (NBP)'),
+        ('Account Title',  'Institute of Space Technology'),
+        ('Account Number', '1234-5678-9012-3456'),
+        ('IBAN',           'PK36NBPA0000001234567890'),
+        ('Branch Code',    '0425'),
+        ('Branch',         'Islamabad Main Branch'),
+    ]
+
+    def lbl(t): return _p(t, fontSize=8, fontName='Helvetica', textColor=_MGRAY)
+    def val(t): return _p(f'<b>{t}</b>', fontSize=8, fontName='Helvetica-Bold',
+                          textColor=colors.black)
+
+    rows = [
+        [_p('<b>UNIVERSITY BANK ACCOUNT DETAILS</b>', fontSize=9,
+            fontName='Helvetica-Bold', textColor=colors.white, alignment=TA_CENTER),
+         _p('')],
+    ]
+    for k, v in details:
+        rows.append([lbl(k), val(v)])
+
+    label_w = 4 * cm
+    tbl = Table(rows, colWidths=[label_w, _W - label_w])
+    tbl.setStyle(TableStyle([
+        ('SPAN',          (0, 0), (1, 0)),
+        ('BACKGROUND',    (0, 0), (1, 0), _IST_BLUE),
+        ('BACKGROUND',    (0, 1), (0, -1), _LGRAY),
+        ('BOX',           (0, 0), (-1, -1), 0.5, _BORD),
+        ('LINEBELOW',     (0, 0), (-1, -1), 0.25, _BORD),
+        ('TOPPADDING',    (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
+    ]))
+    story.append(tbl)
+    story.append(Spacer(1, 6 * mm))
 
 
 # ── TRANSCRIPT ────────────────────────────────────────────────────────────────
@@ -528,14 +567,17 @@ def _build_transcript(story: list, req: dict, student: dict,
                     fontSize=9, fontName='Helvetica-Bold', textColor=_IST_BLUE,
                     alignment=TA_CENTER, spaceAfter=6))
 
-    # Signature — right-aligned via outer table
-    sig = _sig_line_tbl('Controller of Examinations', 6 * cm)
-    sig_outer = Table([[sig]], colWidths=[_W])
-    sig_outer.setStyle(TableStyle([
-        ('ALIGN',      (0, 0), (-1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 16),
+    left_sig  = _sig_block('Controller of Examinations', 'Dr. Ahmad Hassan',   'Controller of Examinations')
+    right_sig = _sig_block('Registrar',                  'Prof. Muhammad Ali', 'Office of the Registrar')
+    sig_tbl = Table([[left_sig, right_sig]], colWidths=[_W / 2, _W / 2])
+    sig_tbl.setStyle(TableStyle([
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
     ]))
-    story.append(sig_outer)
+    story.append(sig_tbl)
 
 
 # ── MARKSHEET ─────────────────────────────────────────────────────────────────
@@ -576,12 +618,17 @@ def _build_marksheet(story: list, req: dict, student: dict,
         story.append(Spacer(1, 2 * mm))
 
     story.append(Spacer(1, 5 * mm))
-    sig = _sig_line_tbl('Controller of Examinations', 6 * cm)
-    sig_outer = Table([[sig]], colWidths=[_W])
-    sig_outer.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+    left_sig  = _sig_block('Controller of Examinations', 'Dr. Ahmad Hassan',   'Controller of Examinations')
+    right_sig = _sig_block('Registrar',                  'Prof. Muhammad Ali', 'Office of the Registrar')
+    sig_tbl = Table([[left_sig, right_sig]], colWidths=[_W / 2, _W / 2])
+    sig_tbl.setStyle(TableStyle([
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
     ]))
-    story.append(sig_outer)
+    story.append(sig_tbl)
 
 
 # ── BONAFIDE CERTIFICATE ──────────────────────────────────────────────────────
@@ -608,11 +655,14 @@ def _build_bonafide(story: list, req: dict, student: dict) -> None:
         f'This certificate is issued on request of the student for whatever lawful purpose '
         f'it may serve. Issued on: <b>{issue_date}</b>.'
     )
-    story.append(_p(body, fontSize=10, fontName='Helvetica', leading=17, spaceAfter=24))
-
-    sig = _sig_line_tbl('Registrar', 6 * cm)
+    story.append(_p(body, fontSize=10, fontName='Helvetica', leading=17, spaceAfter=16))
+    _bank_details_box(story)
+    sig = _sig_block('Registrar', 'Prof. Muhammad Ali', 'Office of the Registrar')
     sig_outer = Table([[sig]], colWidths=[_W])
-    sig_outer.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
+    sig_outer.setStyle(TableStyle([
+        ('ALIGN',      (0, 0), (-1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 14),
+    ]))
     story.append(sig_outer)
 
 
@@ -639,10 +689,12 @@ def _build_character(story: list, req: dict, student: dict) -> None:
         f'office. Issued on: <b>{issue_date}</b>.'
     )
     story.append(_p(body, fontSize=10, fontName='Helvetica', leading=17, spaceAfter=24))
-
-    sig = _sig_line_tbl('Registrar', 6 * cm)
+    sig = _sig_block('Registrar', 'Prof. Muhammad Ali', 'Office of the Registrar')
     sig_outer = Table([[sig]], colWidths=[_W])
-    sig_outer.setStyle(TableStyle([('ALIGN', (0, 0), (-1, -1), 'RIGHT')]))
+    sig_outer.setStyle(TableStyle([
+        ('ALIGN',      (0, 0), (-1, -1), 'RIGHT'),
+        ('TOPPADDING', (0, 0), (-1, -1), 14),
+    ]))
     story.append(sig_outer)
 
 

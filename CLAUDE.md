@@ -41,7 +41,7 @@ python main.py   # or: uvicorn main:app --reload
 
 ## Known environment issues
 
-### All resolved except one
+### All resolved
 
 1. ~~**Missing Python packages**~~ ✅ Fixed — all dependencies in `requirements.txt`; installed into `C:\Users\mubi\python.exe` (Python 3.13.0). Backend starts and serves at `http://localhost:8000/`.
 
@@ -51,14 +51,7 @@ python main.py   # or: uvicorn main:app --reload
 
 4. ~~**RLS not applied**~~ ✅ Fixed — `rls_policies.sql` executed in Supabase SQL Editor. RLS is live on all tables.
 
-5. **`verification_token` column missing from `generated_documents` table** — strong verification (psid + 128-bit token match) will fail until this column exists. Run once in Supabase → SQL Editor:
-   ```sql
-   ALTER TABLE public.generated_documents
-     ADD COLUMN IF NOT EXISTS verification_token TEXT;
-
-   CREATE INDEX IF NOT EXISTS idx_generated_documents_verification_token
-     ON public.generated_documents (verification_token);
-   ```
+5. ~~**`verification_token` column missing from `generated_documents` table**~~ ✅ Fixed — column and index added via SQL Editor. Strong QR verification (psid + 128-bit token match) is live.
 
 ---
 
@@ -347,7 +340,7 @@ ON CONFLICT (id) DO NOTHING;
 - Mobile responsive: all stat card grids (`grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`), request cards (`flex-col md:flex-row`), tables (`overflow-x-auto`), modals (`max-h-[90vh]` with `overflow-y-auto` body), Navbar hamburger menu
 
 ### Known issues / not yet done
-- `verification_token` column in `generated_documents` needs the SQL migration (Known env issue #5)
+- None — all issues resolved ✅
 
 ### Supabase Storage buckets required
 Both must exist and be set to **Public**:
