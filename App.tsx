@@ -71,20 +71,40 @@ const App: React.FC = () => {
 
     // Eager check so the loading state resolves immediately when a valid
     // session is already in localStorage (avoids a flash of the login page).
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        try {
-          const profile = await buildUserProfile(
-            session.user.id,
-            session.user.email ?? '',
-            session.user.user_metadata?.full_name,
-          );
-          setUser(profile);
-        } catch {
-          setUser(null);
-        }
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      // AuthError = corrupt/stale storage from a different project or broken
+      // token. Wipe the specific key so the user sees login, not a spinner.
+      if (error) {
+        localStorage.removeItem('sb-digitaldoc-auth');
+        setUser(null);
         setLoading(false);
+        return;
       }
+
+      if (!session?.user) return;
+
+      // Token issued more than 24 hours ago cannot be refreshed — sign out
+      // cleanly so localStorage is cleared and login page appears.
+      const tokenAge = Date.now() - (session.expires_at! * 1000 - 3600000);
+      if (tokenAge > 86400000) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const profile = await buildUserProfile(
+          session.user.id,
+          session.user.email ?? '',
+          session.user.user_metadata?.full_name,
+        );
+        setUser(profile);
+      } catch {
+        // Do NOT sign out — keeps the refresh token alive for auto-renewal.
+        setUser(null);
+      }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
