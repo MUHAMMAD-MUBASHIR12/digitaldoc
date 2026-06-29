@@ -48,6 +48,10 @@ GRADE_POINTS = {
     'F':  0.00, 'W': 0.00,
 }
 
+# Grade rotation used when seeding records for new students / new semesters
+_GRADE_ROTATION    = ['A+', 'A', 'A-', 'B+', 'B', 'A', 'A-', 'B+']
+_GP_ROTATION       = [4.00, 4.00, 3.67, 3.33, 3.00, 4.00, 3.67, 3.33]
+
 
 # ── PDF helpers (unchanged) ───────────────────────────────────────────────────
 
@@ -262,6 +266,55 @@ def _sgpa(records: list) -> tuple:
               for r in records)
     creds = sum((r.get('courses') or {}).get('credit_hours') or 0 for r in records)
     return (pts / creds if creds else 0.0, creds)
+
+
+def _academic_year_for_sem(batch_year: int, sem_num: int) -> str:
+    offset = (sem_num - 1) // 2
+    y = batch_year + offset
+    return f"{y}-{y + 1}"
+
+
+def _seed_grade_records(
+    student_id: str,
+    department_id: Optional[str],
+    batch_year: int,
+    from_sem: int,
+    to_sem: int,
+) -> None:
+    """Insert grade records for semesters from_sem..to_sem (inclusive).
+
+    Best-effort — any exception is swallowed so the caller never fails
+    due to grade seeding (student profile creation / update must always succeed).
+    """
+    if to_sem < from_sem:
+        return
+    try:
+        q = (
+            supabase.table("courses")
+            .select("id, semester_number")
+            .gte("semester_number", from_sem)
+            .lte("semester_number", to_sem)
+        )
+        if department_id:
+            q = q.eq("department_id", department_id)
+        courses = (q.order("semester_number").execute()).data or []
+        if not courses:
+            return
+        records = [
+            {
+                "student_id":      student_id,
+                "course_id":       c["id"],
+                "grade":           _GRADE_ROTATION[i % len(_GRADE_ROTATION)],
+                "semester_number": int(c.get("semester_number") or from_sem),
+                "academic_year":   _academic_year_for_sem(
+                    batch_year, int(c.get("semester_number") or from_sem)
+                ),
+            }
+            for i, c in enumerate(courses)
+        ]
+        supabase.table("student_semester_records").insert(records).execute()
+    except Exception:
+        pass
 
 
 # ── Single-semester course table ──────────────────────────────────────────────
@@ -1066,7 +1119,19 @@ async def create_student_profile(body: CreateStudentProfileBody, auth_user=Depen
         result = supabase.table("students").insert(insert_data).execute()
         if not result.data:
             raise HTTPException(status_code=500, detail="Failed to create student profile")
-        return result.data[0]
+        student = result.data[0]
+
+        sems_done = int(student.get("semesters_completed") or 0)
+        if sems_done > 0:
+            _seed_grade_records(
+                student_id=student["id"],
+                department_id=student.get("department_id"),
+                batch_year=int(student.get("batch_year") or 2020),
+                from_sem=1,
+                to_sem=sems_done,
+            )
+
+        return student
     except HTTPException:
         raise
     except Exception as e:
@@ -1076,13 +1141,38 @@ async def create_student_profile(body: CreateStudentProfileBody, auth_user=Depen
 @router.put("/update-student/{student_id}")
 async def update_student(student_id: str, body: UpdateStudentBody, auth_user=Depends(require_admin)):
     try:
+        # Snapshot current state so we can detect a semester increase
+        current_res = (
+            supabase.table("students")
+            .select("semesters_completed, department_id, batch_year")
+            .eq("id", student_id)
+            .single()
+            .execute()
+        )
+        if not current_res.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+        current = current_res.data
+
         update_data = body.model_dump(exclude_none=True)
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
         result = supabase.table("students").update(update_data).eq("id", student_id).execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="Student not found")
-        return result.data[0]
+        updated = result.data[0]
+
+        old_sems = int(current.get("semesters_completed") or 0)
+        new_sems = int(updated.get("semesters_completed") or 0)
+        if new_sems > old_sems:
+            _seed_grade_records(
+                student_id=student_id,
+                department_id=updated.get("department_id") or current.get("department_id"),
+                batch_year=int(updated.get("batch_year") or current.get("batch_year") or 2020),
+                from_sem=old_sems + 1,
+                to_sem=new_sems,
+            )
+
+        return updated
     except HTTPException:
         raise
     except Exception as e:
