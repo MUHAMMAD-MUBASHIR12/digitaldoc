@@ -7,13 +7,6 @@ interface Props {
   user: User;
 }
 
-const DEPARTMENTS = [
-  { id: 'a1000000-0000-0000-0000-000000000001', name: 'Computer Science' },
-  { id: 'a1000000-0000-0000-0000-000000000002', name: 'Electrical Engineering' },
-  { id: 'a1000000-0000-0000-0000-000000000003', name: 'Software Engineering' },
-  { id: 'a1000000-0000-0000-0000-000000000004', name: 'Mechanical Engineering' },
-  { id: 'a1000000-0000-0000-0000-000000000005', name: 'Business Administration' },
-];
 
 const BLANK_ADD_FORM = {
   fullName: '', email: '', password: '',
@@ -94,7 +87,7 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
   </div>
 );
 
-const inputCls = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600/10 focus:border-blue-600 focus:bg-white outline-none transition-all text-slate-700 text-sm font-medium";
+const inputCls = "w-full h-12 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600/10 focus:border-blue-600 focus:bg-white outline-none transition-all text-slate-700 text-sm font-medium";
 const selectCls = inputCls + " cursor-pointer";
 
 // ── AdminDashboard ────────────────────────────────────────────────────────────
@@ -119,6 +112,9 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
   const [students, setStudents]           = useState<StudentRecord[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
 
+  // Departments (loaded from DB)
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+
   // Add modal
   const [showAddModal, setShowAddModal]   = useState(false);
   const [addForm, setAddForm]             = useState<AddForm>(BLANK_ADD_FORM);
@@ -135,7 +131,10 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
 
   const rejectTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { refreshData(); }, []);
+  useEffect(() => {
+    refreshData();
+    supabaseApi.getDepartments().then(setDepartments);
+  }, []);
 
   useEffect(() => {
     if (rejectModalId && rejectTextareaRef.current) {
@@ -226,6 +225,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
   };
 
   const handleAddStudent = async () => {
+    console.log('handleAddStudent called');
     const err = validateAddForm();
     if (err) {
       setAddError(err);
@@ -242,6 +242,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
         addForm.fullName.trim(),
       );
       const user_id = result.user_id;
+      console.log('auth created:', user_id);
 
       // Step 2: create academic profile
       await api.createStudentProfile({
@@ -264,9 +265,12 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       await loadStudents();
       setTimeout(() => { setShowAddModal(false); setAddSuccess(false); }, 1400);
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : String(err));
+      console.log('error:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      setAddError(message || 'An unknown error occurred');
       setTimeout(() => { document.querySelector('[data-add-error]')?.scrollIntoView({ behavior: 'smooth' }); }, 100);
     } finally {
+      console.log('finally called');
       setAddLoading(false);
     }
   };
@@ -736,7 +740,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                       <select className={selectCls} value={addForm.departmentId}
                         onChange={e => setAddForm(f => ({ ...f, departmentId: e.target.value }))}>
                         <option value="">— Select Department —</option>
-                        {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                       </select>
                     </Field>
                   </div>
@@ -847,7 +851,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
                     <select className={selectCls} value={editForm.departmentId}
                       onChange={e => setEditForm(f => ({ ...f, departmentId: e.target.value }))}>
                       <option value="">— Select Department —</option>
-                      {DEPARTMENTS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                   </Field>
                 </div>

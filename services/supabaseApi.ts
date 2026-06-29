@@ -346,6 +346,20 @@ export const supabaseApi = {
     }
   },
 
+  // ── getDepartments ────────────────────────────────────────────────────────────
+  getDepartments: async (): Promise<{ id: string; name: string }[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    } catch {
+      return [];
+    }
+  },
+
   // ── updateStudent ─────────────────────────────────────────────────────────────
   updateStudent: async (studentId: string, data: Partial<{
     cgpa: number; semesters_completed: number; total_credits: number;
