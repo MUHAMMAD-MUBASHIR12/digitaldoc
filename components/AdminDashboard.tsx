@@ -121,6 +121,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
   const [addError, setAddError]           = useState<string | null>(null);
   const [addLoading, setAddLoading]       = useState(false);
   const [addSuccess, setAddSuccess]       = useState(false);
+  const [addWarmingUp, setAddWarmingUp]   = useState(false);
 
   // Edit modal
   const [editStudent, setEditStudent]     = useState<StudentRecord | null>(null);
@@ -233,6 +234,8 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
     }
     setAddLoading(true);
     setAddError(null);
+    setAddWarmingUp(false);
+    const warmTimer = setTimeout(() => setAddWarmingUp(true), 12000);
 
     try {
       // Step 1: create auth account
@@ -271,6 +274,8 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       setTimeout(() => { document.querySelector('[data-add-error]')?.scrollIntoView({ behavior: 'smooth' }); }, 100);
     } finally {
       console.log('finally called');
+      clearTimeout(warmTimer);
+      setAddWarmingUp(false);
       setAddLoading(false);
     }
   };
@@ -790,6 +795,12 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
 
             {/* Footer */}
             <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex-shrink-0 space-y-3">
+              {addWarmingUp && !addError && (
+                <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <i className="fas fa-circle-notch fa-spin text-amber-500 flex-shrink-0"></i>
+                  <span className="text-amber-700 text-xs font-bold leading-snug">Server is warming up — this can take up to 60s on first use. Please wait…</span>
+                </div>
+              )}
               {addError && (
                 <div data-add-error className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
                   <i className="fas fa-circle-exclamation text-rose-500 mt-0.5 flex-shrink-0"></i>

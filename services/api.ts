@@ -70,7 +70,7 @@ class ApiService {
     return this.request('/admin/create-student-auth', {
       method: 'POST',
       body: JSON.stringify({ email, password, full_name: fullName }),
-    }, 30000);
+    }, 60000);
   }
 
   async createStudentProfile(data: Record<string, unknown>): Promise<Record<string, unknown>> {
