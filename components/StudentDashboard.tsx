@@ -432,12 +432,14 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                         <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">1. Choose Document Category</p>
                         <div className="grid grid-cols-3 gap-3">
                           {[
-                            { id: DocumentType.TRANSCRIPT, icon: 'fa-file-invoice', label: 'Transcript' },
-                            { id: DocumentType.MARKSHEET, icon: 'fa-table-list', label: 'Marksheet' },
-                            { id: DocumentType.CERTIFICATE, icon: 'fa-award', label: 'Certificate' },
+                            { id: DocumentType.TRANSCRIPT,            icon: 'fa-file-invoice',  label: 'Transcript',      desc: 'Full academic record' },
+                            { id: DocumentType.MARKSHEET,             icon: 'fa-table-list',    label: 'Marksheet',       desc: 'Semester result sheet' },
+                            { id: DocumentType.BONAFIDE,              icon: 'fa-id-card',       label: 'Bonafide Cert',   desc: 'Enrollment verification' },
+                            { id: DocumentType.CHARACTER_CERTIFICATE, icon: 'fa-user-shield',   label: 'Character Cert',  desc: 'Conduct & character' },
+                            { id: DocumentType.CERTIFICATE,           icon: 'fa-graduation-cap', label: 'Degree Cert',    desc: 'Completion certificate' },
                           ].map(type => {
-                            const totalSems = (studentProfile?.program_duration ?? 4) * 2;
-                            const semsDone  = studentProfile?.semesters_completed ?? 0;
+                            const totalSems  = (studentProfile?.program_duration ?? 4) * 2;
+                            const semsDone   = studentProfile?.semesters_completed ?? 0;
                             const certLocked = type.id === DocumentType.CERTIFICATE
                               && studentProfile !== null
                               && semsDone < totalSems;
@@ -447,7 +449,7 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                                 onClick={() => !certLocked && setSelectedType(type.id)}
                                 disabled={certLocked}
                                 title={certLocked ? `Available after completing all ${totalSems} semesters (${semsDone}/${totalSems} done)` : undefined}
-                                className={`py-6 md:py-10 rounded-3xl text-[10px] font-black transition-all border-2 flex flex-col items-center gap-4 ${
+                                className={`py-6 md:py-8 rounded-3xl text-[10px] font-black transition-all border-2 flex flex-col items-center gap-3 ${
                                   certLocked
                                     ? 'bg-slate-50 border-transparent text-slate-200 cursor-not-allowed'
                                     : selectedType === type.id
@@ -456,10 +458,14 @@ const StudentDashboard: React.FC<Props> = ({ user }) => {
                                 }`}
                               >
                                 <i className={`fas ${certLocked ? 'fa-lock' : type.icon} text-xl md:text-2xl`}></i>
-                                <span className="tracking-tight uppercase">{type.label}</span>
-                                {certLocked && (
+                                <span className="tracking-tight uppercase leading-tight text-center">{type.label}</span>
+                                {certLocked ? (
                                   <span className="text-[8px] font-bold text-slate-300 normal-case tracking-normal leading-tight text-center px-1">
-                                    {semsDone}/{totalSems} sems
+                                    Available after all {totalSems} sems<br />{semsDone}/{totalSems} done
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] font-medium normal-case tracking-normal leading-tight text-center px-1 opacity-60">
+                                    {type.desc}
                                   </span>
                                 )}
                               </button>

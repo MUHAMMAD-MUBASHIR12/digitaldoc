@@ -173,7 +173,7 @@ export const supabaseApi = {
       .insert({
         psid,
         student_id:          studentId,
-        doc_type:            docType.toLowerCase(),
+        doc_type:            docType.toLowerCase().replace(/\s+/g, '_'),
         requested_semesters: semesters,
         amount,
         status:              'pending_payment',

@@ -35,7 +35,10 @@ async def create_request(req: DocumentRequestCreate, auth_user=Depends(get_curre
     program_duration = student.get("program_duration") or 4
     total_semesters = program_duration * 2
 
+    VALID_DOC_TYPES = {"marksheet", "transcript", "certificate", "bonafide", "character_certificate"}
     doc_type = req.doc_type.lower()
+    if doc_type not in VALID_DOC_TYPES:
+        raise HTTPException(status_code=422, detail=f"Invalid document type: {req.doc_type}")
 
     if doc_type == "marksheet":
         for sem in req.semesters:
@@ -56,6 +59,7 @@ async def create_request(req: DocumentRequestCreate, auth_user=Depends(get_curre
                     f"You have completed {semesters_completed}."
                 ),
             )
+    # bonafide and character_certificate: no semester restriction
 
     psid = str(uuid.uuid4().int)[:9]
     amount = len(req.semesters) * 500

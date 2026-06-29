@@ -791,9 +791,10 @@ def _build_pdf(req: dict, student: dict, payload: str, verify_url: str,
         _build_transcript(story, req, student, payload, verify_url, grades)
     elif doc_type == 'marksheet':
         _build_marksheet(story, req, student, payload, verify_url, grades)
-    elif doc_type == 'certificate':
-        _build_bonafide(story, req, student)
+    elif doc_type == 'character_certificate':
+        _build_character(story, req, student)
     else:
+        # covers 'certificate' (degree cert), 'bonafide', and any unknown type
         _build_bonafide(story, req, student)
 
     _verification_section(story, psid, payload, verify_url)

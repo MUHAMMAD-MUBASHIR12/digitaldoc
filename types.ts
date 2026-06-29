@@ -7,7 +7,9 @@ export enum UserRole {
 export enum DocumentType {
   TRANSCRIPT = 'Transcript',
   MARKSHEET = 'Marksheet',
-  CERTIFICATE = 'Certificate'
+  BONAFIDE = 'Bonafide',
+  CHARACTER_CERTIFICATE = 'Character Certificate',
+  CERTIFICATE = 'Certificate',
 }
 
 export enum RequestStatus {
