@@ -4,6 +4,12 @@ import { VerifyResponse } from '../types';
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 class ApiService {
+  private lastSuccessAt = 0;
+
+  isLikelyAwake(): boolean {
+    return Date.now() - this.lastSuccessAt < 10 * 60 * 1000;
+  }
+
   private async authHeaders(): Promise<Record<string, string>> {
     let session = (await supabase.auth.getSession()).data.session;
     if (!session) {
@@ -56,7 +62,9 @@ class ApiService {
       throw new Error(`${response.status}: ${detail}`);
     }
 
-    return response.json() as Promise<T>;
+    const data = await (response.json() as Promise<T>);
+    this.lastSuccessAt = Date.now();
+    return data;
   }
 
   async approveRequest(requestId: string, adminName: string): Promise<{ message: string; verification_payload?: string }> {

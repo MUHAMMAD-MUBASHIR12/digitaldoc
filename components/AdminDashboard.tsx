@@ -235,7 +235,9 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
     setAddLoading(true);
     setAddError(null);
     setAddWarmingUp(false);
-    const warmTimer = setTimeout(() => setAddWarmingUp(true), 12000);
+    const warmTimer = setTimeout(() => {
+      if (!api.isLikelyAwake()) setAddWarmingUp(true);
+    }, 5000);
 
     try {
       // Step 1: create auth account
