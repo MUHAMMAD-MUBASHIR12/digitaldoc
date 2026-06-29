@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from routes import student_routes, admin_routes, verification_routes
+from keep_alive import start_keep_alive
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -57,6 +58,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._windows[key] = (window_start, count + 1)
         return await call_next(request)
 
+
+start_keep_alive()
 
 app = FastAPI(
     title="Digital Doc - University Document Automation API",
