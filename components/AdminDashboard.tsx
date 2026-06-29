@@ -315,7 +315,7 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
     setEditLoading(true);
     setEditError(null);
     try {
-      await supabaseApi.updateStudent(editStudent.id, {
+      await api.updateStudent(editStudent.id, {
         department_id:       editForm.departmentId    || undefined,
         degree_title:        editForm.degreeTitle.trim()  || undefined,
         program:             editForm.program.trim()       || undefined,
@@ -333,7 +333,8 @@ const AdminDashboard: React.FC<Props> = ({ user }) => {
       await loadStudents();
       setTimeout(() => { setEditStudent(null); setEditSuccess(false); }, 1400);
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Failed to update student.');
+      const msg = err instanceof Error ? err.message : String(err);
+      setEditError(msg || 'Failed to update student.');
     } finally {
       setEditLoading(false);
     }

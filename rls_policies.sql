@@ -27,7 +27,7 @@ GRANT ALL ON public.activity_logs       TO service_role;
 
 -- authenticated (browser client with user JWT)
 GRANT SELECT                    ON public.users               TO authenticated;
-GRANT SELECT                    ON public.students             TO authenticated;
+GRANT SELECT, UPDATE            ON public.students             TO authenticated;
 GRANT SELECT                    ON public.departments          TO authenticated;
 GRANT SELECT, INSERT, UPDATE    ON public.document_requests    TO authenticated;
 GRANT SELECT, INSERT            ON public.payments             TO authenticated;
@@ -77,6 +77,7 @@ DROP POLICY IF EXISTS "Staff read all users"                ON public.users;
 
 DROP POLICY IF EXISTS "Students read own student row"       ON public.students;
 DROP POLICY IF EXISTS "Staff read all students"             ON public.students;
+DROP POLICY IF EXISTS "Staff update students"               ON public.students;
 
 DROP POLICY IF EXISTS "Public read departments"             ON public.departments;
 
@@ -154,6 +155,12 @@ CREATE POLICY "Students read own student row"
 CREATE POLICY "Staff read all students"
   ON public.students FOR SELECT TO authenticated
   USING (is_staff());
+
+-- Staff can update student records via the admin edit modal.
+CREATE POLICY "Staff update students"
+  ON public.students FOR UPDATE TO authenticated
+  USING (is_staff())
+  WITH CHECK (is_staff());
 
 
 -- ── departments ────────────────────────────────────────────────────────────────

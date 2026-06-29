@@ -427,6 +427,15 @@ def _build_transcript(story: list, req: dict, student: dict,
 
     sem_numbers = sorted(k for k in sem_map if k > 0)
 
+    if not sem_numbers:
+        story.append(_p(
+            'No grade records found for this student. '
+            'Please contact the Registrar office.',
+            fontSize=10, fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#cc0000'),
+            spaceBefore=12, spaceAfter=12,
+        ))
+
     # Column widths for paired left (55%) / right (45%) tables
     left_w  = _W * 0.55
     right_w = _W * 0.45
@@ -598,6 +607,15 @@ def _build_marksheet(story: list, req: dict, student: dict,
             sem_map[sem_num].append(r)
 
     col_w = [2.0*cm, _W - 2.0*cm - 1.8*cm - 1.4*cm, 1.8*cm, 1.4*cm]
+
+    if not any(k > 0 for k in sem_map):
+        story.append(_p(
+            'No grade records found for this student. '
+            'Please contact the Registrar office.',
+            fontSize=10, fontName='Helvetica-Bold',
+            textColor=colors.HexColor('#cc0000'),
+            spaceBefore=12, spaceAfter=12,
+        ))
 
     for sem_num in sorted(k for k in sem_map if k > 0):
         records   = sem_map[sem_num]

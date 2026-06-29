@@ -80,6 +80,13 @@ class ApiService {
     });
   }
 
+  async updateStudent(studentId: string, data: Record<string, unknown>): Promise<void> {
+    await this.request(`/admin/update-student/${studentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async rejectRequest(requestId: string, adminName: string, reason: string): Promise<{ message: string }> {
     return this.request(
       `/admin/reject/${requestId}?admin_name=${encodeURIComponent(adminName)}&reason=${encodeURIComponent(reason)}`,

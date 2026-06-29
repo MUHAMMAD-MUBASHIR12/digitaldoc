@@ -372,7 +372,7 @@ export const supabaseApi = {
       // @ts-ignore — Supabase client types mutations as never without a generated schema
       .update(data)
       .eq('id', studentId);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   // ── verifyPsid (legacy, kept for reference) ──────────────────────────────────
